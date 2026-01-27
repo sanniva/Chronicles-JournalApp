@@ -1,0 +1,534 @@
+@page "/"
+@page "/auth"
+@using JournalApp.Components.Models
+@using JournalApp.Components.Services
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject UserStateService UserState
+@inject AuthDatabase AuthService
+
+<PageTitle>Chronicles</PageTitle>
+
+<div class="page-wrapper">
+    <div class="auth-wrapper">
+
+        <!-- Header -->
+        <div class="header">
+            <div class="app-icon">
+                <i class="fa-solid fa-scroll"></i>
+            </div>
+            <h1>Chronicles</h1>
+            <p>Capture your timeline, tell your story.</p>
+        </div>
+
+        <!-- Card -->
+        <div class="auth-card">
+
+            <!-- Toggle -->
+            <div class="segment">
+                <button class="@(_showLogin ? "active" : "")" @onclick="ToggleLogin">
+                    Login
+                </button>
+                <button class="@(_showRegister ? "active" : "")" @onclick="ToggleRegister">
+                    Register
+                </button>
+            </div>
+
+            <!-- Username -->
+            <div class="field">
+                <label>USERNAME</label>
+                <input type="text"
+                       placeholder="Enter your username"
+                       maxlength="20"
+                       autocomplete="off"
+                       @bind="Username"
+                       @bind:event="oninput" />
+            </div>
+
+            <!-- Password -->
+            <div class="field">
+                <label>PASSWORD</label>
+                @if (_showRegister)
+                {
+                    <input type="password"
+                           class="pin"
+                           placeholder="Enter a 4-digit pin"
+                           @bind="Password"
+                           @bind:event="oninput"
+                           @onkeydown="OnPinKeyDown"
+                           inputmode="numeric"
+                           pattern="[0-9]*" />
+                }
+                else
+                {
+                    <input type="password"
+                           class="pin"
+                           placeholder="Enter your pin"
+                           @bind="Password"
+                           @bind:event="oninput" />
+                }
+            </div>
+
+            <!-- Remember Me -->
+            <div class="remember">
+                <input type="checkbox" @bind="_rememberMe" />
+                <span>Remember me</span>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="error">@_errorMessage</div>
+            }
+
+            <!-- Action Button -->
+            <button class="primary-btn" disabled="@_isLoading" @onclick="ProcessAuth">
+                @(_isLoading ? "Processing..." : (_showLogin ? "Sign In" : "Register"))
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _showLogin = false;
+    private bool _showRegister = true;
+    private bool _rememberMe = false;
+    private bool _isLoading = false;
+
+    private string Username = "";
+    private string Password = "";
+    private string _errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Check if there is a token stored for auto-login
+            var token = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "authToken");
+            if(!string.IsNullOrEmpty(token))
+            {
+                var success = await UserState.LoginWithToken(token);
+                if(success)
+                {
+                    Navigation.NavigateTo("/chronicles", true);
+                    return;
+                }
+                else
+                {
+                    // Remove invalid token
+                    await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "authToken");
+                }
+            }
+
+            // Check if username is remembered
+            var rememberedUser = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "rememberedUser");
+            if (!string.IsNullOrEmpty(rememberedUser))
+            {
+                Username = rememberedUser;
+                _showLogin = true;
+                _showRegister = false;
+            }
+        }
+        catch { }
+    }
+
+    private void ToggleLogin()
+    {
+        _showLogin = true;
+        _showRegister = false;
+        Password = "";
+        _errorMessage = "";
+    }
+
+    private void ToggleRegister()
+    {
+        _showRegister = true;
+        _showLogin = false;
+        Password = "";
+        _errorMessage = "";
+    }
+
+    private void OnPinKeyDown(KeyboardEventArgs e)
+    {
+        // Allow navigation and control keys
+        if (e.Key == "Backspace" || e.Key == "Delete" || e.Key == "Tab" || 
+            e.Key == "ArrowLeft" || e.Key == "ArrowRight" || e.Key == "Home" || e.Key == "End" ||
+            e.CtrlKey || e.AltKey || e.MetaKey)
+        {
+            return;
+        }
+
+        // Only allow numeric keys (0-9) and numpad keys (Numpad0-Numpad9)
+        if (!char.IsDigit(e.Key[0]) && 
+            !(e.Key.Length == 7 && e.Key.StartsWith("Numpad")) &&
+            !(e.Key.Length == 6 && e.Key.StartsWith("Digit")))
+        {
+            // For single character keys that aren't digits, prevent them
+            if (e.Key.Length == 1 && !char.IsDigit(e.Key[0]))
+            {
+                // Use JavaScript to prevent default behavior
+                _ = JSRuntime.InvokeVoidAsync("eval", 
+                    "event.preventDefault();");
+            }
+        }
+    }
+
+    private async Task ProcessAuth()
+    {
+        if (Username.Length < 3)
+        {
+            _errorMessage = "Username must be at least 3 characters";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Password))
+        {
+            _errorMessage = "Password is required";
+            return;
+        }
+
+        if (Password.Length < 4)
+        {
+            _errorMessage = "Password must be at least 4 digits";
+            return;
+        }
+
+        // Additional validation for registration - ensure PIN is numeric
+        if (_showRegister && !IsNumericPin(Password))
+        {
+            _errorMessage = "PIN must contain only numbers";
+            Password = "";
+            return;
+        }
+
+        _isLoading = true;
+        _errorMessage = "";
+
+        try
+        {
+            if (_showLogin)
+                await Login();
+            else
+                await Register();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private bool IsNumericPin(string pin)
+    {
+        return pin.All(char.IsDigit);
+    }
+
+    private async Task Login()
+    {
+        var success = await UserState.LoginAsync(Username, Password);
+        if (!success)
+        {
+            _errorMessage = "Invalid username or password";
+            Password = "";
+            return;
+        }
+
+        // Remember username if checked
+        if (_rememberMe)
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "rememberedUser", Username);
+        else
+            await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "rememberedUser");
+
+        // Generate auth token for auto-login
+        var token = await UserState.GenerateTokenForUser(Username);
+        if(_rememberMe)
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "authToken", token);
+
+        Navigation.NavigateTo("/chronicles", true);
+    }
+
+    private async Task Register()
+    {
+        // Ensure PIN is numeric before registration
+        if (!IsNumericPin(Password))
+        {
+            _errorMessage = "PIN must contain only numbers";
+            Password = "";
+            return;
+        }
+
+        var success = await UserState.RegisterAsync(Username, Password);
+        if (!success)
+        {
+            _errorMessage = "Username already exists";
+            Password = "";
+            return;
+        }
+
+        if (_rememberMe)
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "rememberedUser", Username);
+            var token = await UserState.GenerateTokenForUser(Username);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "authToken", token);
+        }
+
+        Navigation.NavigateTo("/chronicles", true);
+    }
+
+    private async Task ClearAllData()
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm", "This will delete ALL users and journal data. Continue?"
+        );
+
+        if (!confirmed) return;
+
+        // Delete auth database
+        var authDbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "journal_auth.db");
+        if (File.Exists(authDbPath)) File.Delete(authDbPath);
+
+        // Delete journal database
+        var journalDbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "journal.db");
+        if (File.Exists(journalDbPath)) File.Delete(journalDbPath);
+
+        await JSRuntime.InvokeVoidAsync("localStorage.clear");
+
+        UserState.Logout();
+
+        Username = "";
+        Password = "";
+        _showRegister = true;
+        _showLogin = false;
+        _errorMessage = "All data cleared successfully. Please refresh the page.";
+    }
+}
+
+
+<style>
+    .page-wrapper {
+        min-height: 100vh;
+        background: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Segoe UI', sans-serif;
+        transition: background 0.3s, color 0.3s;
+    }
+
+    .dark .page-wrapper {
+        background: #0f172a;
+        color: #f1f1f1;
+    }
+
+    .auth-wrapper {
+        width: 100%;
+        max-width: 420px;
+        padding: 20px;
+    }
+    .dark .auth-wrapper {
+        background: #0f172a; /* Midnight blue background */
+    }
+
+    .header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .app-icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 12px;
+        background: #0284c7;
+        color: white;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px; 
+        transition: background 0.3s, color 0.3s;
+    }
+
+    .dark .app-icon {
+        background: #0284c7;
+        color: #fff;
+    }
+
+    .header h1 {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: 700;
+    }
+
+    .dark .header h1 {
+        color: #f1f1f1;
+    }
+
+    .header p {
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .dark .header p {
+        color: #ccc;
+    }
+
+    .auth-card {
+        background: white;
+        border-radius: 22px;
+        padding: 30px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+        transition: background 0.3s, color 0.3s, box-shadow 0.3s;
+    }
+
+    .dark .auth-card {
+        background:#1e293b;
+        /*box-shadow: 0 8px 24px rgba(0,0,0,0.5);*/
+        color: #f1f1f1;
+    }
+
+    .segment {
+        display: flex;
+        background: #f1f5f9;
+        border-radius: 14px;
+        padding: 6px;
+        margin-bottom: 24px;
+        transition: background 0.3s;
+    }
+
+    .dark .segment {
+        background: #2a2a2a;
+    }
+
+    .segment button {
+        flex: 1;
+        border: none;
+        background: transparent;
+        padding: 10px;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        color: #475569;
+        transition: all 0.3s;
+    }
+
+    .dark .segment button {
+        color: #ccc;
+    }
+
+    .segment button.active {
+        background: white;
+        color: #2563eb;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    }
+
+    .dark .segment button.active {
+        background: #0284c7;
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .field {
+        margin-bottom: 18px;
+    }
+
+    .field label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #64748b;
+        margin-bottom: 6px;
+        display: block;
+        transition: color 0.3s;
+    }
+
+    .dark .field label {
+        color: #aaa;
+    }
+
+    .field input {
+        width: 93%;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1.5px solid #e2e8f0;
+        font-size: 15px;
+        transition: background 0.3s, border 0.3s, color 0.3s;
+        text-align: center;
+        letter-spacing: 0.5px;
+    }
+
+    .dark .field input {
+        background: #2a2a2a;
+        border-color: #555;
+        color: #f1f1f1;
+    }
+
+    .field input:focus {
+        outline: none;
+        border-color: #2563eb;
+    }
+
+    .pin {
+        text-align: center;
+        letter-spacing: 1px;
+        font-size: 16px;
+        /* Show dots for password */
+        -webkit-text-security: disc;
+        text-security: disc;
+    }
+
+    /*!* For numeric keyboard on mobile *!*/
+    /*input[inputmode="numeric"] {*/
+    /*    -webkit-appearance: none;*/
+    /*    -moz-appearance: textfield;*/
+    /*}*/
+
+    .remember {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: #475569;
+        margin-bottom: 20px;
+    }
+
+    .dark .remember {
+        color: #ccc;
+    }
+
+    .primary-btn {
+        width: 100%;
+        padding: 15px;
+        border-radius: 14px;
+        border: none;
+        background: #2563eb;
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.3s, transform 0.2s, opacity 0.3s;
+    }
+
+    .primary-btn:disabled {
+        opacity: 0.6;
+    }
+
+    .dark .primary-btn {
+        background: #0284c7;
+    }
+
+    .error {
+        background: #fee2e2;
+        color: #b91c1c;
+        padding: 12px;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 16px;
+        font-size: 14px;
+    }
+
+    .dark .error {
+        background: #3a1c1c;
+        color: #ff6b6b;
+    }
+</style>

@@ -1,0 +1,395 @@
+﻿/* Base styles */
+
+body, html {
+    font-family: 'Inter', system-ui;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', system-ui;
+}
+
+/* Sidebar fonts */
+.sidebar,
+.sidebar nav li,
+.sidebar nav li span,
+.sidebar nav li i {
+    font-family: 'Inter', system-ui;
+}
+
+/* Links & buttons */
+a, .btn-link { color: #006bb7; }
+
+.btn-primary {
+    color: #fff;
+    background-color: #1b6ec2;
+    border-color: #1861ac;
+}
+
+.btn:focus, .btn:active:focus {
+    box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+}
+
+/* Content padding */
+.content {
+    padding-top: 1.1rem;
+}
+
+/* Validation outlines */
+.valid.modified:not([type=checkbox]) { outline: 1px solid #26b050; }
+.invalid { outline: 1px solid #e50000; }
+.validation-message { color: #e50000; }
+
+/* Blazor error UI */
+#blazor-error-ui { background: lightyellow; position: fixed; bottom: 0; width: 100%; padding: 0.6rem 1.25rem; box-shadow: 0 -1px 2px rgba(0,0,0,0.2); display: none; z-index: 1000; }
+#blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: 0.75rem; top: 0.5rem; }
+
+/* Safe area support for mobile notch */
+.status-bar-safe-area { display: none; }
+@supports (-webkit-touch-callout: none) {
+    .status-bar-safe-area {
+        display: flex;
+        position: sticky;
+        top: 0;
+        height: env(safe-area-inset-top);
+        background-color: #f7f7f7;
+        width: 100%;
+        z-index: 1;
+    }
+}
+
+/* Dashboard layout & dark mode  */
+.dashboard-layout {
+    display: flex;
+    height: 100vh;           /* Full viewport height */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;        /* Prevent body scroll affecting sidebar */
+    transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Sidebar */
+.dashboard-layout nav,
+.sidebar {
+    width: 250px;
+    background-color: #fff;
+    padding: 20px;
+    box-shadow: 2px 0 6px rgba(0,0,0,0.1);
+    flex-shrink: 0;
+    position: sticky;        /* Sidebar fixed */
+    top: 0;
+    height: 100vh;
+    overflow: hidden;        /* Prevent sidebar scroll */
+    transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Main content */
+.dashboard-main {
+    flex: 1;                 /* Fill remaining width */
+    height: 100%;
+    overflow-y: auto;        /* Main content scrolls */
+    padding: 20px;
+    background-color: #f5f6fa;
+    color: #000;
+    transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* Cards */
+.card {
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    background-color: #fff;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    transition: background 0.3s ease, color 0.3s ease;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Buttons */
+.btn-toggle {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background-color: #4a90e2;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.3s ease, color 0.3s ease;
+}
+.btn-toggle:hover {
+    background-color: #357ABD;
+}
+
+/* Settings page layout */
+.settings-page {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+
+/* Dark mode overrides */
+
+.dark .dashboard-main {
+    background-color: #1e1e2f;
+    color: #e1e1e1;
+}
+
+.dark nav,
+.dark .sidebar {
+    background-color: #2a2a3c;
+    color: #e1e1e1;
+}
+
+.dark .card {
+    background-color: #2a2a3c;
+    color: #e1e1e1;
+}
+
+.dark .btn-toggle {
+    background-color: #8ab4f8;
+    color: #1e1e2f;
+}
+.dark .btn-toggle:hover {
+    background-color: #6690d0;
+}
+
+/* Nav links inside sidebar */
+.dashboard-layout nav a,
+.dashboard-layout nav a span,
+.dashboard-layout nav a i {
+    transition: color 0.3s ease;
+}
+
+.dark .dashboard-layout nav a {
+    color: #cbd5e1;
+}
+.dark .dashboard-layout nav a.active {
+    color: #60a5fa;
+}
+.dark .dashboard-layout nav a:hover {
+    color: #93c5fd;
+}
+
+/* Dark mode for Write Page */
+
+.dark body,
+.dark .page {
+    background: #12121e;
+    color: #e1e1e1;
+}
+
+.dark .main {
+    background: transparent;
+    color: #e1e1e1;
+}
+/* Dark mode for editor title input */
+.dark .editor .title {
+    background-color: #2a2a3c;  /* dark background */
+    color: #e1e1e1;             /* light text */
+    border: 1px solid #3f3f5f;  /* subtle border */
+    padding: 8px 12px;           /* optional for better spacing */
+    border-radius: 12px;
+    outline: none;
+}
+
+.dark .editor .title:focus {
+    border-color: #0ea5e9;       /* accent on focus */
+    background-color: #2a2a3c;   /* keep same bg on focus */
+    color: #fff;
+}
+
+
+.dark .header h1 {
+    color: #e1e1e1;
+}
+
+.dark .save-btn {
+    background: #0ea5e9;
+    color: #fff;
+}
+
+.dark .layout {
+    gap: 24px;
+}
+
+.dark .editor-card {
+    background: #1f1f2f;
+    color: #e1e1e1;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+
+.dark .editor-hint span {
+    color: #9ca3af;
+}
+
+.dark textarea {
+    background: #2a2a3c;
+    color: #e1e1e1;
+    border: 1px solid #3f3f5f;
+}
+
+.dark .editor-preview {
+    background: #2a2a3c;
+    color: #e1e1e1;
+}
+
+.dark .entry-content {
+    color: #d1d5db;
+}
+
+.dark .entry-content strong {
+    color: #fff;
+}
+
+.dark .entry-content em {
+    color: #e1e1e1;
+}
+
+/* Right Sidebar */
+.dark .card {
+    background: #1f1f2f;
+    color: #e1e1e1;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+}
+
+.dark .mood {
+    background: #2a2a3c;
+    border: 1px solid #3f3f5f;
+    color: #e1e1e1;
+}
+
+.dark .mood.active {
+    background: #0ea5e9;
+    color: #fff;
+    border-color: #0ea5e9;
+}
+
+.dark .chips {
+    gap: 8px;
+}
+
+.dark .chip {
+    background: #2a2a3c;
+    border: 1px solid #3f3f5f;
+    color: #e1e1e1;
+}
+
+.dark .chip.selected {
+    background: #0ea5e9;
+    color: #fff;
+    border-color: #0ea5e9;
+}
+
+.dark .card label {
+    color: #9ca3af;
+}
+
+.dark .card select,
+.dark .card input {
+    background: #2a2a3c;
+    border: 1px solid #3f3f5f;
+    color: #e1e1e1;
+}
+
+.dark .card select:focus,
+.dark .card input:focus {
+    background: #2a2a3c;
+    border-color: #0ea5e9;
+    color: #fff;
+}
+
+/* Dark mode for Journal List */
+
+.dark .page {
+    background: #12121e;
+    color: #e1e1e1;
+}
+
+.dark .page-header h1,
+.dark .page-header p {
+    color: #e1e1e1;
+}
+
+.dark .primary-btn {
+    background: #0ea5e9;
+    color: #fff;
+}
+
+.dark .entry-card {
+    background: #1f1f2f;
+    color: #e1e1e1;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+}
+
+.dark .mood-icon {
+    background: #2a2a3c;
+    color: #60a5fa;
+}
+
+.dark .entry-body h3 {
+    color: #e1e1e1;
+}
+
+.dark .meta {
+    color: #9ca3af;
+}
+
+.dark .pill {
+    background: #2a2a3c;
+    color: #60a5fa;
+}
+
+.dark .preview {
+    color: #d1d5db;
+}
+
+.dark .tags .chip {
+    background: #2a2a3c;
+    color: #e1e1e1;
+}
+
+.dark .tags .chip.muted {
+    background: #1f1f2f;
+    color: #9ca3af;
+}
+
+.dark .icon-btn {
+    background: #2a2a3c;
+    color: #e1e1e1;
+}
+
+.dark .icon-btn.danger {
+    color: #f87171;
+}
+
+.dark .entry-card .preview em {
+    color: #cbd5e1;
+}
+
+.dark .entry-card .preview strong {
+    color: #fff;
+}
+
+.dark .pagination {
+    color: #e1e1e1;
+}
+
+.dark .page-btn {
+    background: #2a2a3c;
+    border: 1px solid #3f3f5f;
+    color: #e1e1e1;
+}
+
+.dark .page-btn:disabled {
+    color: #6b7280;
+    border-color: #3f3f5f;
+    background: #1f1f2f;
+}

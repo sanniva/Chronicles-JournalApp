@@ -1,0 +1,1300 @@
+@page "/write"
+@page "/write/{EntryId:int}"
+@using JournalApp.Components.Models
+@using JournalApp.Components.Services
+@using Microsoft.AspNetCore.Components.Web
+@inject DatabaseService DbService
+@inject UserStateService UserState
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@implements IAsyncDisposable
+
+
+<PageTitle>@(EntryId.HasValue ? "Edit Entry" : "New Entry")</PageTitle>
+
+<div class="page">
+    <main class="main">
+        <header class="write-header">
+            <button class="icon-btn" @onclick="GoBack">
+                <i class="fa-solid fa-arrow-left"></i>
+            </button>
+
+            <h1>@(EntryId.HasValue ? "✏️ Edit Entry" : "📝 New Entry")</h1>
+
+            <button class="save-btn"
+                    disabled="@(_isSaving || IsContentEmpty || string.IsNullOrEmpty(_entry.PrimaryMood))"
+                    @onclick="HandleSave">
+                @if (_isSaving)
+                {
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                }
+                else
+                {
+                    <i class="fa-solid fa-floppy-disk"></i>
+                }
+                @(_isSaving ? "Saving..." : "Save")
+            </button>
+        </header>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="error-alert">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                @_errorMessage
+                <button class="error-close" @onclick="() => _errorMessage = null">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+        }
+
+        @if (_isLoading)
+        {
+            <div class="loading-overlay">
+                <div class="loading-spinner"></div>
+                <div>@(EntryId.HasValue ? "Loading entry..." : "Loading editor...")</div>
+            </div>
+        }
+        else
+        {
+            <div class="layout">
+                <section class="editor">
+                    <!-- Date and Time Picker -->
+                    <div class="datetime-picker">
+                        <div class="date-input">
+                            <label>Date</label>
+                            <input type="date"
+                                   value="@EntryDateString"
+                                   @onchange="@((ChangeEventArgs e) => EntryDateString = e.Value?.ToString())"/>
+                        </div>
+                        <div class="time-input">
+                            <label>Time</label>
+                            <input type="time"
+                                   value="@EntryTimeString"
+                                   @onchange="@((ChangeEventArgs e) => EntryTimeString = e.Value?.ToString())"/>
+                        </div>
+                    </div>
+
+                    <input class="title"
+                           placeholder="Title (Optional)"
+                           value="@_entry.Title"
+                           @oninput="@((ChangeEventArgs e) => _entry.Title = e.Value?.ToString())"/>
+
+                    <!-- Rich Text Editor -->
+                    <div class="editor-card">
+                        <!-- Quill Editor Container -->
+                        <div id="editor-container"></div>
+
+                        <!-- Character Count -->
+                        <div class="character-count">
+                            Characters: <span id="char-count">0</span>
+                        </div>
+                    </div>
+                </section>
+
+                <aside class="right">
+                    <!-- Primary Moods -->
+                    <div class="card">
+                        <h3>
+                            How are you feeling?
+                            @if (string.IsNullOrEmpty(_entry.PrimaryMood))
+                            {
+                                <span class="required-indicator">*Required</span>
+                            }
+                        </h3>
+                        <div class="moods">
+                            @foreach (var mood in PrimaryMoods)
+                            {
+                                <button class="mood @(_entry.PrimaryMood == mood ? "active" : "")"
+                                        @onclick="() => SelectPrimaryMood(mood)"
+                                        title="@mood">
+                                    @MoodEmoji[mood]
+                                    <span>@mood</span>
+                                </button>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_entry.MoodCategory))
+                        {
+                            <div class="mood-summary">
+                                <span class="badge">@_entry.MoodCategory</span>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Secondary Moods -->
+                    <div class="card">
+                        <h3>Secondary Emotions (Max 2)</h3>
+                        <div class="chips">
+                            @foreach (var mood in PrimaryMoods)
+                            {
+                                <button class="chip @(IsSecondarySelected(mood) ? "selected" : "")"
+                                        disabled="@IsSecondaryDisabled(mood)"
+                                        @onclick="() => ToggleSecondaryMood(mood)">
+                                    @mood
+                                </button>
+                            }
+                        </div>
+                        @if (HasSecondaryMoods)
+                        {
+                            <div class="selected-secondary">
+                                Selected:
+                                @_entry.SecondaryMood1
+                                @if (!string.IsNullOrEmpty(_entry.SecondaryMood2))
+                                {
+                                    <span> & @_entry.SecondaryMood2</span>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Category & Tags -->
+                    <div class="card">
+                        <label>CATEGORY</label>
+                        <select @bind="_entry.Category">
+                            <option value="">Select category...</option>
+                            <option>Work</option>
+                            <option>Personal</option>
+                            <option>Health</option>
+                            <option>Travel</option>
+                            <option>Reflections</option>
+                            <option>Goals</option>
+                        </select>
+
+                        <label>TAGS</label>
+                        <div class="tag-input-container">
+                            <input placeholder="# happy"
+                                   @bind="_newTag"
+                                   @onkeypress="AddTagOnEnter"/>
+                            <button class="tag-add-btn" @onclick="AddTag">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </div>
+
+                        @if (_entry.TagList?.Any() == true)
+                        {
+                            <div class="tag-list">
+                                @foreach (var tag in _entry.TagList)
+                                {
+                                    <span class="tag-item">
+                                            #@tag
+                                        <button class="tag-remove" @onclick="() => RemoveTag(tag)">
+                                                <i class="fa-solid fa-times"></i>
+                                            </button>
+                                        </span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </aside>
+            </div>
+        }
+    </main>
+</div>
+
+
+@code {
+    [Parameter] public int? EntryId { get; set; }
+
+    private JournalEntry _entry = new();
+    private string _newTag = "";
+    private bool _isSaving = false;
+    private bool _isLoading = false;
+    private string _errorMessage = "";
+    private DotNetObjectReference<WritePage> _dotNetRef;
+
+    // String properties for date/time binding
+    private string _entryDateString = "";
+    private string _entryTimeString = "";
+
+    private string[] PrimaryMoods =
+        { "Happy", "Excited", "Relaxed", "Calm", "Thoughtful", "Bored", "Sad", "Angry", "Stressed" };
+
+    private Dictionary<string, string> MoodEmoji = new()
+    {
+        ["Happy"] = "😊", ["Excited"] = "🤩", ["Relaxed"] = "😌", ["Calm"] = "🌿", ["Thoughtful"] = "🤔",
+        ["Bored"] = "😐", ["Sad"] = "😢", ["Angry"] = "😠", ["Stressed"] = "😫"
+    };
+
+    private Dictionary<string, string> MoodCategoryMap = new()
+    {
+        ["Happy"] = "Positive", ["Excited"] = "Positive", ["Relaxed"] = "Positive",
+        ["Calm"] = "Neutral", ["Thoughtful"] = "Neutral", ["Bored"] = "Neutral",
+        ["Sad"] = "Negative", ["Angry"] = "Negative", ["Stressed"] = "Negative"
+    };
+
+    private bool IsContentEmpty =>
+        string.IsNullOrWhiteSpace(_entry.Content) ||
+        _entry.Content == "<p><br></p>" ||
+        _entry.Content == "<p></p>";
+
+    // Properties for date/time binding
+    private string EntryDateString
+    {
+        get => _entryDateString;
+        set
+        {
+            if (_entryDateString != value)
+            {
+                _entryDateString = value;
+            }
+        }
+    }
+
+    private string EntryTimeString
+    {
+        get => _entryTimeString;
+        set
+        {
+            if (_entryTimeString != value)
+            {
+                _entryTimeString = value;
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserState.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/", true);
+            return;
+        }
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Check if we're in edit mode (EntryId has a value)
+            if (EntryId.HasValue && EntryId.Value > 0)
+            {
+                // Edit Mode: Load existing entry
+                await LoadExistingEntry(EntryId.Value);
+            }
+            else
+            {
+                // New Entry Mode: Create new entry
+                CreateNewEntry();
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading: {ex.Message}";
+            Console.WriteLine($"Error in OnInitializedAsync: {ex}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadExistingEntry(int entryId)
+    {
+        if (UserState.CurrentUser == null) return;
+
+        // Load the existing entry
+        var existingEntry = await DbService.GetEntryById(entryId, UserState.CurrentUser.UserId);
+
+        if (existingEntry != null)
+        {
+            _entry = existingEntry;
+
+            // Convert Tags string to TagList
+            if (!string.IsNullOrEmpty(_entry.Tags))
+            {
+                _entry.TagList = _entry.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
+            }
+            else
+            {
+                _entry.TagList = new List<string>();
+            }
+
+            // Set date/time strings
+            EntryDateString = _entry.EntryDate.ToString("yyyy-MM-dd");
+            EntryTimeString = _entry.EntryDate.ToString("HH:mm");
+
+            Console.WriteLine($"Loaded entry {entryId} for editing");
+            Console.WriteLine($"Title: {_entry.Title}, Content length: {_entry.Content?.Length}");
+        }
+        else
+        {
+            // Entry not found, redirect to new entry
+            _errorMessage = "Entry not found. Creating a new entry instead.";
+            CreateNewEntry();
+        }
+    }
+
+    private void CreateNewEntry()
+    {
+        // Set default date/time strings
+        EntryDateString = DateTime.Today.ToString("yyyy-MM-dd");
+        EntryTimeString = DateTime.Now.ToString("HH:mm");
+
+        _entry = new JournalEntry
+        {
+            UserId = UserState.CurrentUser.UserId,
+            CreatedAt = DateTime.Now,
+            UpdatedAt = DateTime.Now,
+            TagList = new List<string>(),
+            Content = ""
+        };
+
+        Console.WriteLine("Created new entry");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Small delay to ensure DOM is ready
+            await Task.Delay(100);
+            await InitializeQuillEditor();
+        }
+    }
+
+    private async Task InitializeQuillEditor()
+    {
+        try
+        {
+            Console.WriteLine("Initializing Quill editor...");
+            Console.WriteLine($"Editor mode: {(EntryId.HasValue ? "EDIT" : "NEW")}");
+            Console.WriteLine($"Initial content length: {_entry.Content?.Length ?? 0}");
+
+            var success = await JS.InvokeAsync<bool>("initializeQuill", _dotNetRef, _entry.Content ?? "");
+
+            if (success)
+            {
+                Console.WriteLine("Quill editor initialized successfully");
+            }
+            else
+            {
+                Console.WriteLine("Failed to initialize Quill editor");
+                _errorMessage = "Rich text editor failed to load. Please refresh the page.";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing Quill editor: {ex.Message}");
+            _errorMessage = "Rich text editor failed to load. Please refresh the page.";
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void UpdateContent(string htmlContent, int charCount)
+    {
+        _entry.Content = htmlContent;
+        Console.WriteLine($"Content updated, length: {htmlContent?.Length}");
+        StateHasChanged();
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/list");
+
+    private async Task HandleSave()
+    {
+        Console.WriteLine($"Save button clicked - EntryId: {EntryId?.ToString() ?? "null"}");
+
+        // Validate primary mood
+        if (string.IsNullOrEmpty(_entry.PrimaryMood))
+        {
+            Console.WriteLine("Primary mood not selected, showing error");
+            _errorMessage = "Please select a primary mood before saving!";
+            StateHasChanged();
+            return;
+        }
+
+        if (IsContentEmpty)
+        {
+            Console.WriteLine("Content is empty, showing error");
+            _errorMessage = "Content cannot be empty!";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            _isSaving = true;
+            StateHasChanged();
+
+            // Get the latest content from Quill editor
+            var currentContent = await JS.InvokeAsync<string>("getQuillContent");
+            if (!string.IsNullOrWhiteSpace(currentContent))
+            {
+                _entry.Content = currentContent;
+            }
+
+            // Parse date and time
+            DateTime entryDate;
+
+            if (DateTime.TryParse(EntryDateString, out var datePart) &&
+                TimeSpan.TryParse(EntryTimeString, out var timePart))
+            {
+                entryDate = datePart.Date.Add(timePart);
+            }
+            else if (DateTime.TryParse(EntryDateString, out entryDate))
+            {
+                entryDate = entryDate.Date.Add(DateTime.Now.TimeOfDay);
+            }
+            else
+            {
+                entryDate = DateTime.Now;
+            }
+
+            _entry.EntryDate = entryDate;
+            _entry.UpdatedAt = DateTime.Now;
+
+            // Only set CreatedAt for new entries
+            if (_entry.Id == 0)
+            {
+                _entry.CreatedAt = DateTime.Now;
+            }
+
+            // Convert TagList to Tags string
+            _entry.Tags = string.Join(",", _entry.TagList ?? new List<string>());
+
+            Console.WriteLine($"Saving entry - ID: {_entry.Id}, Mode: {(EntryId.HasValue ? "Edit" : "Create")}");
+
+            // Check if entry already exists for the selected date (only for new entries)
+            if (_entry.Id == 0)
+            {
+                var existingEntry = await DbService.GetEntryForDate(_entry.EntryDate.Date, UserState.CurrentUser.UserId);
+
+                if (existingEntry != null)
+                {
+                    // Entry already exists for this date - show error and don't save
+                    _errorMessage = $"A journal entry already exists for {_entry.EntryDate:yyyy-MM-dd}. Only one entry per day is allowed.";
+                    _isSaving = false;
+                    StateHasChanged();
+                    return;
+                }
+            }
+
+            await DbService.SaveEntry(_entry, UserState.CurrentUser.UserId);
+
+            Console.WriteLine("Save successful!");
+
+            var message = EntryId.HasValue ? "Entry updated successfully!" : "Entry created successfully!";
+            await ShowSuccess(message);
+            Navigation.NavigateTo("/list");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving entry: {ex.Message}");
+            _errorMessage = $"Error saving entry: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectPrimaryMood(string mood)
+    {
+        _entry.PrimaryMood = mood;
+        _entry.MoodCategory = MoodCategoryMap[mood];
+        StateHasChanged();
+    }
+
+    private void ToggleSecondaryMood(string mood)
+    {
+        if (IsSecondarySelected(mood))
+        {
+            if (_entry.SecondaryMood1 == mood)
+            {
+                _entry.SecondaryMood1 = _entry.SecondaryMood2;
+                _entry.SecondaryMood2 = "";
+            }
+            else if (_entry.SecondaryMood2 == mood)
+            {
+                _entry.SecondaryMood2 = "";
+            }
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(_entry.SecondaryMood1))
+                _entry.SecondaryMood1 = mood;
+            else if (string.IsNullOrEmpty(_entry.SecondaryMood2))
+                _entry.SecondaryMood2 = mood;
+        }
+
+        StateHasChanged();
+    }
+
+    private bool IsSecondarySelected(string m) =>
+        _entry.SecondaryMood1 == m || _entry.SecondaryMood2 == m;
+
+    private bool IsSecondaryDisabled(string m) =>
+        !IsSecondarySelected(m) &&
+        !string.IsNullOrEmpty(_entry.SecondaryMood1) &&
+        !string.IsNullOrEmpty(_entry.SecondaryMood2);
+
+    private bool HasSecondaryMoods =>
+        !string.IsNullOrEmpty(_entry.SecondaryMood1) || !string.IsNullOrEmpty(_entry.SecondaryMood2);
+
+    private void AddTagOnEnter(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newTag))
+        {
+            AddTag();
+        }
+    }
+
+    private void AddTag()
+    {
+        if (!string.IsNullOrWhiteSpace(_newTag))
+        {
+            var tag = _newTag.Trim().TrimStart('#');
+            if (!_entry.TagList.Contains(tag, StringComparer.OrdinalIgnoreCase))
+            {
+                _entry.TagList.Add(tag);
+                _newTag = "";
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void RemoveTag(string tag)
+    {
+        _entry.TagList.Remove(tag);
+        StateHasChanged();
+    }
+
+    private async Task ShowSuccess(string message)
+    {
+        await JS.InvokeVoidAsync("alert", message);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            _dotNetRef?.Dispose();
+
+            // Clean up Quill editor
+            await JS.InvokeVoidAsync("destroyQuill");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error disposing: {ex.Message}");
+        }
+    }
+
+}
+
+<style>
+    /* Main Layout Styles */
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        font-family: Inter, system-ui, sans-serif;
+        background: #f6f8fb;
+    }
+
+    .dark body {
+        background: #0f172a;
+    }
+
+    .page {
+        display: flex;
+        min-height: 100vh;
+    }
+
+    .main {
+        flex: 1;
+        padding: 24px;
+        max-width: 1400px;
+        margin: 0 auto;
+        width: 100%;
+    }
+
+    .write-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        padding-top: 20px;
+    }
+
+    .icon-btn {
+        background: #fff;
+        border: 2px solid #e5e7eb;
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #374151;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        transition: all 0.2s;
+    }
+
+    .icon-btn:hover {
+        border-color: #667eea;
+        color: #667eea;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .write-header h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+        color: #111827;
+    }
+
+    .save-btn {
+        background: #10b981;
+        color: #fff;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+    }
+
+    .save-btn:hover:not(:disabled) {
+        background: #059669;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+
+    .save-btn:disabled {
+        background: #9ca3af;
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .error-alert {
+        background: #fee2e2;
+        border: 1px solid #fca5a5;
+        color: #dc2626;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+    }
+
+    .error-close {
+        background: none;
+        border: none;
+        color: #dc2626;
+        cursor: pointer;
+        margin-left: auto;
+        padding: 4px;
+    }
+
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.8);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #10b981;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin-bottom: 10px;
+    }
+
+
+    :root.dark .page {
+        background: #0f172a !important;
+    }
+
+    .layout {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 24px;
+        margin-top: 24px;
+    }
+
+    .datetime-picker {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .date-input, .time-input {
+        flex: 1;
+    }
+
+    .date-input label, .time-input label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        margin-bottom: 6px;
+        letter-spacing: 0.04em;
+    }
+
+    .date-input input, .time-input input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        font-size: 14px;
+        background: #f9fafb;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .date-input input:focus, .time-input input:focus {
+        border-color: #667eea;
+        background: #fff;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .date-input input:disabled, .time-input input:disabled {
+        background: #f3f4f6;
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    .editor .title {
+        width: 100%;
+        border: none;
+        font-size: 28px;
+        font-weight: 600;
+        margin-bottom: 24px;
+        background: transparent;
+        color: #111827;
+        outline: none;
+        padding: 8px 0;
+    }
+
+    .editor .title::placeholder {
+        color: #9ca3af;
+    }
+
+    .editor-card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e5e7eb;
+    }
+
+    .editor-hint {
+        font-size: 14px;
+        color: #6b7280;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .editor-hint span {
+        padding: 4px 8px;
+        background: #f3f4f6;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 12px;
+        border: 1px solid #e5e7eb;
+    }
+
+    /* Required indicator */
+    .required-indicator {
+        color: #ef4444;
+        font-size: 12px;
+        font-weight: normal;
+        margin-left: 8px;
+    }
+
+    .dark .required-indicator {
+        color: #f87171;
+    }
+
+    /* Quill Editor Styles */
+    #editor-container {
+        min-height: 300px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+    }
+
+    .ql-toolbar {
+        border: 1px solid #e5e7eb !important;
+        border-radius: 8px 8px 0 0 !important;
+        background: #f9fafb !important;
+    }
+
+    .ql-container {
+        border: 1px solid #e5e7eb !important;
+        border-radius: 0 0 8px 8px !important;
+        font-size: 16px;
+        font-family: inherit;
+    }
+
+    .ql-editor {
+        min-height: 300px;
+        line-height: 1.6;
+        padding: 16px;
+    }
+
+    .ql-editor.ql-blank::before {
+        color: #9ca3af;
+        font-style: normal;
+    }
+
+    .character-count {
+        margin-top: 12px;
+        font-size: 13px;
+        color: #6b7280;
+        text-align: right;
+    }
+
+    .character-count span {
+        font-weight: 600;
+        color: #667eea;
+    }
+
+    /* Right Sidebar */
+    .right {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e5e7eb;
+    }
+
+    .card h3 {
+        margin: 0 0 16px 0;
+        font-size: 18px;
+        color: #111827;
+        font-weight: 600;
+    }
+
+    .moods {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .mood {
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        padding: 10px;
+        border-radius: 12px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        transition: all 0.2s;
+    }
+
+    .mood:hover {
+        border-color: #667eea;
+        background: #f8fafc;
+    }
+
+    .mood.active {
+        border-color: #667eea;
+        background: #e0f2fe;
+    }
+
+    .mood span {
+        font-size: 12px;
+        color: #374151;
+    }
+
+    .mood-summary {
+        margin-top: 12px;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+        background: #e0f2fe;
+        color: #0284c7;
+        border: 1px solid #bae6fd;
+    }
+
+    .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+    }
+
+    .chip {
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: #374151;
+    }
+
+    .chip:hover:not(:disabled) {
+        border-color: #667eea;
+        background: #f8fafc;
+    }
+
+    .chip.selected {
+        background: #667eea;
+        color: #fff;
+        border-color: #667eea;
+    }
+
+    .chip:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: #f3f4f6;
+    }
+
+    .selected-secondary {
+        font-size: 12px;
+        color: #6b7280;
+        padding-top: 8px;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .card label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        margin: 14px 0 6px;
+        letter-spacing: 0.04em;
+    }
+
+    .card select, .card input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        font-size: 14px;
+        background: #f9fafb;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .card select:focus, .card input:focus {
+        border-color: #667eea;
+        background: #fff;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .tag-input-container {
+        display: flex;
+        gap: 8px;
+    }
+
+    .tag-add-btn {
+        background: #667eea;
+        color: white;
+        border: none;
+        width: 40px;
+        border-radius: 10px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+    }
+
+    .tag-add-btn:hover {
+        background: #0284c7;
+    }
+
+    .tag-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+    }
+
+    .tag-item {
+        background: #e0f2fe;
+        color: #0284c7;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid #bae6fd;
+    }
+
+    .tag-remove {
+        background: none;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        padding: 0;
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        opacity: 0.7;
+    }
+
+    .tag-remove:hover {
+        opacity: 1;
+    }
+
+
+    /* Dark theme support */
+    .dark .icon-btn {
+        background: #1e293b;
+        border-color: #475569;
+        color: #94a3b8;
+    }
+
+    .dark .icon-btn:hover {
+        border-color: #818cf8;
+        color: #818cf8;
+    }
+
+    .dark .write-header h1 {
+        color: #f1f5f9;
+    }
+
+    .dark .error-alert {
+        background: #7f1d1d;
+        border-color: #991b1b;
+        color: #fca5a5;
+    }
+
+    .dark .date-input label,
+    .dark .time-input label {
+        color: #94a3b8;
+    }
+
+    .dark .date-input input,
+    .dark .time-input input {
+        background: #334155;
+        border-color: #475569;
+        color: #f1f5f9;
+    }
+
+    .dark .date-input input:focus,
+    .dark .time-input input:focus {
+        background: #1e293b;
+        border-color: #818cf8;
+        box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.1);
+    }
+
+    .dark .date-input input:disabled,
+    .dark .time-input input:disabled {
+        background: #1e293b;
+        color: #64748b;
+    }
+
+    .dark .editor .title {
+        color: #f1f5f9;
+    }
+
+    .dark .editor .title::placeholder {
+        color: #94a3b8;
+    }
+
+    .dark .editor-card {
+        background: #1e293b;
+        border-color: #475569;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .dark .editor-hint {
+        color: #94a3b8;
+    }
+
+    .dark .editor-hint span {
+        background: #334155;
+        border-color: #475569;
+        color: #cbd5e1;
+    }
+
+    /* Dark mode styles for Quill */
+    .dark #editor-container {
+        background: #1e293b;
+        border-color: #475569;
+    }
+
+    .dark .ql-toolbar {
+        background: #334155 !important;
+        border-color: #475569 !important;
+    }
+
+    .dark .ql-container {
+        border-color: #475569 !important;
+    }
+
+    .dark .ql-editor {
+        color: #f1f5f9;
+        background: #1e293b;
+    }
+
+    .dark .ql-editor.ql-blank::before {
+        color: #94a3b8;
+    }
+
+    .dark .ql-stroke {
+        stroke: #cbd5e1 !important;
+    }
+
+    .dark .ql-fill {
+        fill: #cbd5e1 !important;
+    }
+
+    .dark .ql-picker-label {
+        color: #cbd5e1 !important;
+    }
+
+    .dark .ql-picker-options {
+        background: #334155 !important;
+        border-color: #475569 !important;
+    }
+
+    .dark .ql-picker-item {
+        color: #cbd5e1 !important;
+    }
+
+    .dark .ql-picker-item:hover {
+        background: #475569 !important;
+    }
+
+    .dark .character-count {
+        color: #94a3b8;
+    }
+
+    .dark .character-count span {
+        color: #818cf8;
+    }
+
+    .dark .card {
+        background: #1e293b;
+        border-color: #475569;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .dark .card h3 {
+        color: #f1f5f9;
+    }
+
+    .dark .mood {
+        background: #334155;
+        border-color: #475569;
+        color: #cbd5e1;
+    }
+
+    .dark .mood span {
+        color: #cbd5e1;
+    }
+
+    .dark .mood:hover {
+        background: #475569;
+        border-color: #667eea;
+    }
+
+    .dark .mood.active {
+        background: #312e81;
+        border-color: #4338ca;
+    }
+
+    .dark .badge {
+        background: #0c4a6e;
+        border-color: #075985;
+        color: #7dd3fc;
+    }
+
+    .dark .chip {
+        background: #334155;
+        border-color: #475569;
+        color: #cbd5e1;
+    }
+
+    .dark .chip:hover:not(:disabled) {
+        background: #475569;
+        border-color: #667eea;
+    }
+
+    .dark .chip:disabled {
+        background: #1e293b;
+    }
+
+    .dark .selected-secondary {
+        color: #94a3b8;
+        border-color: #475569;
+    }
+
+    .dark .card select,
+    .dark .card input {
+        background: #334155;
+        border-color: #475569;
+        color: #f1f5f9;
+    }
+
+    .dark .card select:focus,
+    .dark .card input:focus {
+        background: #1e293b;
+        border-color: #818cf8;
+    }
+
+    .dark .tag-item {
+        background: #0c4a6e;
+        border-color: #075985;
+        color: #7dd3fc;
+    }
+
+    /* Toolbar button hover effects */
+    .ql-toolbar button:hover,
+    .ql-toolbar button:focus {
+        color: #667eea !important;
+    }
+
+    .ql-toolbar button.ql-active {
+        color: #667eea !important;
+    }
+
+    .dark .ql-toolbar button:hover,
+    .dark .ql-toolbar button:focus {
+        color: #818cf8 !important;
+    }
+
+    .dark .ql-toolbar button.ql-active {
+        color: #818cf8 !important;
+    }
+</style>

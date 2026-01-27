@@ -1,0 +1,108 @@
+﻿<div class="navmenu">
+    <ul>
+        <li>
+            <NavLink href="/chronicles" class="nav-link" Match="NavLinkMatch.All">
+                <i class="fa-solid fa-gauge-high"></i>
+                <span>DASH</span>
+            </NavLink>
+        </li>
+        <li>
+            <NavLink href="/list" class="nav-link" Match="NavLinkMatch.All">
+                <i class="fa-solid fa-list-ul"></i>
+                <span>LIST</span>
+            </NavLink>
+        </li>
+        <li>
+            <NavLink href="/write" class="nav-link" Match="NavLinkMatch.All">
+                <i class="fa-solid fa-pen-nib"></i>
+                <span>WRITE</span>
+            </NavLink>
+        </li>
+        <li>
+            <NavLink href="/settings" class="nav-link" Match="NavLinkMatch.All">
+                <i class="fa-solid fa-gear"></i>
+                <span>USER</span>
+            </NavLink>
+        </li>
+    </ul>
+</div>
+
+<style>
+    /* Sidebar base */
+    .navmenu {
+        width: 70px;
+        background: #ffffff;
+        height: 100vh;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.05);
+        padding: 15px 0;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .navmenu ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .navmenu li {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 12px 0;
+        width: 100%;
+    }
+
+    /* NavLink base */
+    .nav-link {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-decoration: none;
+        color: #6b7280; /* default color */
+        transition: all 0.25s;
+        width: 100%;
+        text-align: center;
+    }
+
+    .nav-link i {
+        font-size: 18px;
+    }
+
+    .nav-link span {
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.6px;
+    }
+
+    /* Active link */
+    .navmenu .nav-link.active {
+        color: #2563eb !important; /* active link color */
+    }
+
+    /* Hover effect */
+    .navmenu .nav-link:hover {
+        color: #1d4ed8 !important; /* hover color */
+    }
+
+    /* Dark mode support */
+    .dark .navmenu {
+        background: #2a2a3c;
+    }
+
+    .dark .navmenu .nav-link {
+        color: #cbd5e1;
+    }
+
+    .dark .navmenu .nav-link.active {
+        color: #60a5fa !important;
+    }
+
+    .dark .navmenu .nav-link:hover {
+        color: #93c5fd !important;
+    }
+
+</style>

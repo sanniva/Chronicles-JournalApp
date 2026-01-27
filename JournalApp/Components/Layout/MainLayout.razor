@@ -1,0 +1,47 @@
+﻿@inherits LayoutComponentBase
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+
+<div class="dashboard-layout @(IsDarkMode ? "dark" : "")">
+    @if (ShouldShowNavMenu)
+    {
+        <NavMenu />
+    }
+    <div class="dashboard-main @(!ShouldShowNavMenu ? "full-width" : "")">
+        @Body
+    </div>
+</div>
+
+@code {
+    public bool IsDarkMode { get; private set; }
+    private bool ShouldShowNavMenu { get; set; } = true;
+
+    protected override void OnInitialized()
+    {
+        // Check if we're on the auth/login page
+        var currentUri = Navigation.Uri;
+        ShouldShowNavMenu = !(currentUri.Contains("/auth") || 
+                              currentUri.EndsWith("/") || 
+                              currentUri.Contains("/login"));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var theme = await JSRuntime.InvokeAsync<string>("themeHelper.getTheme");
+            IsDarkMode = theme == "dark";
+
+            await JSRuntime.InvokeVoidAsync("themeHelper.setDark", IsDarkMode);
+
+            StateHasChanged();
+        }
+    }
+
+    public async Task ToggleThemeAsync()
+    {
+        IsDarkMode = !IsDarkMode;
+        await JSRuntime.InvokeVoidAsync("themeHelper.setDark", IsDarkMode);
+        StateHasChanged();
+    }
+}

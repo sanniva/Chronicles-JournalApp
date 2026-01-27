@@ -1,0 +1,18 @@
+# Rider IDE files
+.idea/
+*.sln.iml
+*.DotSettings.user
+
+# MAUI / build outputs
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.db-shm
+*.db-wal
+
+# Mac / Linux temp files
+*.DS_Store
+*.swp

@@ -1,0 +1,1578 @@
+@page "/chronicles"
+@using JournalApp.Components.Models
+@using JournalApp.Components.Services
+@inject DatabaseService DbService
+@inject UserStateService UserState
+@inject NavigationManager Navigation
+
+<PageTitle>Dashboard</PageTitle>
+
+
+<div class="dashboard-container">
+    <div class="overview-header">
+        <h1>Overview</h1>
+        <p>Welcome back, @UserState.CurrentUser?.Username! Here's your journal activity.</p>
+    </div>
+
+    <!-- Top Stats -->
+    <div class="stats-grid">
+        <div class="stat-card streak">
+            <span class="icon">🔥</span>
+            <div class="stat-content">
+                <span class="label">Current Streak</span>
+                <h2>@CurrentStreak <small>Days</small></h2>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <span class="icon">🏆</span>
+            <div class="stat-content">
+                <span class="label">Longest Streak</span>
+                <h2>@LongestStreak</h2>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <span class="icon">📅</span>
+            <div class="stat-content">
+                <span class="label">Missed Days</span>
+                <h2>@MissedDays</h2>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <span class="icon">📝</span>
+            <div class="stat-content">
+                <span class="label">Total Entries</span>
+                <h2>@TotalEntries</h2>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="dashboard-content">
+        <!-- Top Row: Mood Data -->
+        <div class="mood-section">
+            <!-- Mood Distribution -->
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3>Mood Distribution</h3>
+                    <span class="card-subtitle">Positive, Neutral & Negative</span>
+                </div>
+                <div class="chart-wrapper">
+                    @if (_isLoading)
+                    {
+                        <div class="chart-loading">
+                            <div class="spinner"></div>
+                            <span>Loading mood data...</span>
+                        </div>
+                    }
+                    else if (_hasMoodData)
+                    {
+                        <div class="mood-chart-container">
+                            <div class="mood-chart">
+                                <svg width="160" height="160" viewBox="0 0 160 160">
+                                    @{
+                                        var radius = 60;
+                                        var centerX = 80;
+                                        var centerY = 80;
+                                        var cumulativeAngle = 0.0;
+        
+                                        // Calculate angles
+                                        var positiveAngle = 360.0 * (_positiveMoodPercent / 100.0);
+                                        var neutralAngle = 360.0 * (_neutralMoodPercent / 100.0);
+                                    }
+    
+                                    <!-- Positive segment -->
+                                    <path d="@GetArcPath(centerX, centerY, radius, cumulativeAngle, cumulativeAngle + positiveAngle)"
+                                          fill="#10b981" 
+                                          class="chart-segment"
+                                          title='Positive: @_positiveMoodPercent.ToString("0.0")%'>
+                                    </path>
+                                    @{ cumulativeAngle += positiveAngle; }
+    
+                                    <!-- Neutral segment -->
+                                    <path d="@GetArcPath(centerX, centerY, radius, cumulativeAngle, cumulativeAngle + neutralAngle)"
+                                          fill="#f59e0b" 
+                                          class="chart-segment"
+                                          title='Neutral: @_neutralMoodPercent.ToString("0.0")%'>
+                                    </path>
+                                    @{ cumulativeAngle += neutralAngle; }
+    
+                                    <!-- Negative segment -->
+                                    <path d="@GetArcPath(centerX, centerY, radius, cumulativeAngle, cumulativeAngle + (360 - cumulativeAngle))"
+                                          fill="#ef4444" 
+                                          class="chart-segment"
+                                          title='Negative: @_negativeMoodPercent.ToString("0.0")%'>
+                                    </path>
+    
+                                    <circle cx="80" cy="80" r="30" fill="white"></circle>
+                                </svg>
+                            
+                                <div class="chart-center">
+                                    <div class="center-value">@_totalMoodEntries</div>
+                                    <div class="center-label">entries</div>
+                                </div>
+                            </div>
+                        
+                            <div class="mood-legend">
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #10b981;"></span>
+                                    <span class="legend-label">Positive</span>
+                                    <span class="legend-value">@_positiveMoodPercent.ToString("0.0")%</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #f59e0b;"></span>
+                                    <span class="legend-label">Neutral</span>
+                                    <span class="legend-value">@_neutralMoodPercent.ToString("0.0")%</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #ef4444;"></span>
+                                    <span class="legend-label">Negative</span>
+                                    <span class="legend-value">@_negativeMoodPercent.ToString("0.0")%</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="chart-empty">
+                            <span>📊</span>
+                            <p>No mood data</p>
+                            <small>Start writing to see stats</small>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Mood Details -->
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3>Mood Details</h3>
+                    <span class="card-subtitle">Your emotional patterns</span>
+                </div>
+                <div class="chart-wrapper">
+                    @if (_isLoading)
+                    {
+                        <div class="chart-loading">
+                            <div class="spinner"></div>
+                            <span>Loading details...</span>
+                        </div>
+                    }
+                    else if (_hasMoodData)
+                    {
+                        <div class="mood-details">
+                            <div class="mood-summary">
+                                <div class="mood-icon-large">👑</div>
+                                <div class="summary-info">
+                                    <div class="summary-label">Most Frequent</div>
+                                    <div class="summary-value">@_mostCommonMood</div>
+                                    <div class="summary-sub">@_mostCommonMoodCount entries</div>
+                                </div>
+                            </div>
+                        
+                            <div class="mood-breakdown">
+                                <div class="breakdown-item positive">
+                                    <div class="breakdown-icon">👍</div>
+                                    <div class="breakdown-info">
+                                        <div class="breakdown-label">Positive</div>
+                                        <div class="breakdown-value">@_positiveMoodCount</div>
+                                        <div class="breakdown-percent">@_positiveMoodPercent.ToString("0.0")%</div>
+                                    </div>
+                                </div>
+                            
+                                <div class="breakdown-item neutral">
+                                    <div class="breakdown-icon">😐</div>
+                                    <div class="breakdown-info">
+                                        <div class="breakdown-label">Neutral</div>
+                                        <div class="breakdown-value">@_neutralMoodCount</div>
+                                        <div class="breakdown-percent">@_neutralMoodPercent.ToString("0.0")%</div>
+                                    </div>
+                                </div>
+                            
+                                <div class="breakdown-item negative">
+                                    <div class="breakdown-icon">😔</div>
+                                    <div class="breakdown-info">
+                                        <div class="breakdown-label">Negative</div>
+                                        <div class="breakdown-value">@_negativeMoodCount</div>
+                                        <div class="breakdown-percent">@_negativeMoodPercent.ToString("0.0")%</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="chart-empty">
+                            <span>😊</span>
+                            <p>No mood details</p>
+                            <small>Add moods to your entries</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Row: Tags -->
+        <div class="tags-section">
+            <!-- Most Used Tags -->
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3>Most Used Tags</h3>
+                    <span class="card-subtitle">Top categories</span>
+                </div>
+                <div class="chart-wrapper">
+                    @if (_isLoading)
+                    {
+                        <div class="chart-loading">
+                            <div class="spinner"></div>
+                            <span>Loading tags...</span>
+                        </div>
+                    }
+                    else if (_topTags.Any())
+                    {
+                        <div class="tags-list">
+                            @foreach (var tag in _topTags)
+                            {
+                                <div class="tag-item">
+                                    <span class="tag-badge" style="background: @GetTagColor(tag.Category);"></span>
+                                    <span class="tag-name">@tag.Category</span>
+                                    <span class="tag-count">@tag.Count</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="chart-empty">
+                            <span>🏷️</span>
+                            <p>No tags available</p>
+                            <small>Add categories to your entries</small>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Tag Breakdown -->
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3>Tag Breakdown</h3>
+                    <span class="card-subtitle">% of entries per category</span>
+                </div>
+                <div class="chart-wrapper">
+                    @if (_isLoading)
+                    {
+                        <div class="chart-loading">
+                            <div class="spinner"></div>
+                            <span>Loading categories...</span>
+                        </div>
+                    }
+                    else if (_tagBreakdown.Any())
+                    {
+                        <div class="bar-chart-container">
+                            <div class="bar-chart">
+                                @foreach (var tag in _tagBreakdown)
+                                {
+                                    <div class="bar-item">
+                                        <div class="bar-label">@tag.Category</div>
+                                        <div class="bar-track">
+                                            <div class="bar-fill" style="width: @(tag.Percentage)%; background: @GetTagColor(tag.Category);"></div>
+                                            <div class="bar-percent">@tag.Percentage.ToString("0")%</div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="chart-empty">
+                            <span>📊</span>
+                            <p>No category data</p>
+                            <small>Add categories to entries</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Row: Trends & Missed Days -->
+        <div class="trends-section">
+            <!-- Word Count Trends -->
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3>Writing Trends</h3>
+                    <span class="card-subtitle">Average words per entry</span>
+                </div>
+                <div class="chart-wrapper">
+                    @if (_isLoading)
+                    {
+                        <div class="chart-loading">
+                            <div class="spinner"></div>
+                            <span>Analyzing trends...</span>
+                        </div>
+                    }
+                    else if (_wordCountTrends.Any())
+                    {
+                        <div class="trend-chart">
+                            <div class="trend-stats">
+                                <div class="trend-stat">
+                                    <div class="trend-label">Current Avg</div>
+                                    <div class="trend-value">@_currentAvgWords <small>words</small></div>
+                                </div>
+                                <div class="trend-stat">
+                                    <div class="trend-label">Trend</div>
+                                    <div class="trend-value @(_wordCountTrend > 0 ? "positive" : _wordCountTrend < 0 ? "negative" : "")">
+                                        @(_wordCountTrend > 0 ? "+" : "")@_wordCountTrend.ToString("0")
+                                    </div>
+                                </div>
+                            </div>
+                        
+                            <div class="trend-graph">
+                                @{
+                                    var maxWords = _wordCountTrends.Max(t => t.WordCount);
+                                    var minWords = _wordCountTrends.Min(t => t.WordCount);
+                                    var range = maxWords - minWords;
+                                    var points = new List<string>();
+                            
+                                    for (int i = 0; i < _wordCountTrends.Count; i++)
+                                    {
+                                        var point = _wordCountTrends[i];
+                                        var normalized = range > 0 ? (point.WordCount - minWords) * 100 / range : 50;
+                                        var x = i * (100.0 / (_wordCountTrends.Count - 1));
+                                        points.Add($"{x.ToString("0.0")},{100 - normalized}");
+                                    }
+                                    var pathData = $"M {string.Join(" L ", points)}";
+                                }
+                            
+                                <svg width="100%" height="40">
+                                    <path d="@pathData" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            
+                                <div class="graph-labels">
+                                    <span>Start</span>
+                                    <span>Recent</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="chart-empty">
+                            <span>📈</span>
+                            <p>No trend data</p>
+                            <small>Write more entries</small>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Missed Days -->
+            <div class="chart-card">
+                <div class="card-header">
+                    <h3>Missed Days</h3>
+                    <span class="card-subtitle">Recent dates without entries</span>
+                </div>
+                <div class="chart-wrapper">
+                    @if (_isLoading)
+                    {
+                        <div class="chart-loading">
+                            <div class="spinner"></div>
+                            <span>Loading dates...</span>
+                        </div>
+                    }
+                    else if (_recentMissedDays.Any())
+                    {
+                        <div class="missed-days">
+                            @foreach (var date in _recentMissedDays)
+                            {
+                                <div class="missed-day">
+                                    <div class="missed-date">
+                                        <span class="date-day">@date.ToString("dd")</span>
+                                        <span class="date-month">@date.ToString("MMM")</span>
+                                    </div>
+                                    <div class="missed-info">
+                                        <span class="missed-weekday">@date.ToString("dddd")</span>
+                                        <span class="missed-ago">@GetDaysAgo(date) days ago</span>
+                                    </div>
+                                </div>
+                            }
+                            @if (MissedDays > 5)
+                            {
+                                <div class="more-days">
+                                    + @(MissedDays - 5) more days
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="chart-empty">
+                            <span>🎯</span>
+                            <p>Perfect consistency!</p>
+                            <small>No missed days</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<JournalEntry> _entries = new();
+    private bool _isLoading = true;
+    private bool _hasMoodData = false;
+    
+    // Mood statistics
+    private string _mostCommonMood = "None";
+    private int _mostCommonMoodCount = 0;
+    private int _totalMoodEntries = 0;
+    
+    private int _positiveMoodCount = 0;
+    private int _neutralMoodCount = 0;
+    private int _negativeMoodCount = 0;
+    private double _positiveMoodPercent = 0;
+    private double _neutralMoodPercent = 0;
+    private double _negativeMoodPercent = 0;
+    
+    // Tag statistics
+    private List<TagData> _topTags = new();
+    private List<TagBreakdown> _tagBreakdown = new();
+    
+    // Word count trends
+    private List<WordCountTrend> _wordCountTrends = new();
+    private int _currentAvgWords = 0;
+    private int _wordCountTrend = 0;
+    
+    // Missed days
+    private List<DateTime> _recentMissedDays = new();
+    
+    // Basic stats
+    private int CurrentStreak = 0;
+    private int LongestStreak = 0;
+    private int MissedDays = 0;
+    private int TotalEntries = 0;
+    private int TotalWords = 0;
+    
+    // Data classes
+    private class TagData
+    {
+        public string Category { get; set; } = "";
+        public int Count { get; set; }
+    }
+    
+    private class TagBreakdown
+    {
+        public string Category { get; set; } = "";
+        public int Count { get; set; }
+        public double Percentage { get; set; }
+    }
+    
+    private class WordCountTrend
+    {
+        public string Period { get; set; } = "";
+        public int WordCount { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserState.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/", true);
+            return;
+        }
+        
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        try
+        {
+            _isLoading = true;
+
+            // Load entries FOR CURRENT USER ONLY
+            var entries = await DbService.GetEntriesByUserId(UserState.CurrentUser.UserId);
+            _entries = entries ?? new List<JournalEntry>();
+
+            // Calculate basic stats
+            TotalEntries = _entries.Count;
+            CalculateStreaks();
+            CalculateMissedDays();
+
+            // Calculate all detailed stats
+            if (_entries.Any())
+            {
+                CalculateMoodStats();
+                CalculateTagStats();
+                CalculateWordCountTrends();
+                CalculateRecentMissedDays();
+            }
+            
+            _hasMoodData = _positiveMoodCount + _neutralMoodCount + _negativeMoodCount > 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading dashboard: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CalculateMoodStats()
+    {
+        // Categorize moods
+        var moodGroups = _entries
+            .Where(e => !string.IsNullOrEmpty(e.PrimaryMood))
+            .GroupBy(e => e.PrimaryMood)
+            .ToList();
+
+        _totalMoodEntries = moodGroups.Sum(g => g.Count());
+        
+        // Most common mood
+        var mostCommon = moodGroups
+            .OrderByDescending(g => g.Count())
+            .FirstOrDefault();
+        
+        if (mostCommon != null)
+        {
+            _mostCommonMood = mostCommon.Key;
+            _mostCommonMoodCount = mostCommon.Count();
+        }
+
+        // Categorize by mood type
+        foreach (var group in moodGroups)
+        {
+            var mood = group.Key.ToLower();
+            var count = group.Count();
+            
+            if (IsPositiveMood(mood))
+                _positiveMoodCount += count;
+            else if (IsNeutralMood(mood))
+                _neutralMoodCount += count;
+            else
+                _negativeMoodCount += count;
+        }
+
+        // Calculate percentages
+        var total = _positiveMoodCount + _neutralMoodCount + _negativeMoodCount;
+        if (total > 0)
+        {
+            _positiveMoodPercent = (_positiveMoodCount * 100.0) / total;
+            _neutralMoodPercent = (_neutralMoodCount * 100.0) / total;
+            _negativeMoodPercent = (_negativeMoodCount * 100.0) / total;
+        }
+    }
+
+    private bool IsPositiveMood(string mood)
+    {
+        var positiveMoods = new[] { "happy", "excited", "joyful", "content", "grateful", "proud", "hopeful", "optimistic", "relaxed" };
+        return positiveMoods.Contains(mood);
+    }
+
+    private bool IsNeutralMood(string mood)
+    {
+        var neutralMoods = new[] { "neutral", "calm", "okay", "fine", "thoughtful", "bored", "tired", "indifferent", "contemplative" };
+        return neutralMoods.Contains(mood);
+    }
+
+    private void CalculateTagStats()
+    {
+        // Most used tags (top 8)
+        _topTags = _entries
+            .Where(e => !string.IsNullOrEmpty(e.Category))
+            .GroupBy(e => e.Category)
+            .Select(g => new TagData { Category = g.Key, Count = g.Count() })
+            .OrderByDescending(t => t.Count)
+            .Take(8)
+            .ToList();
+
+        // Tag breakdown (percentage) - top 6
+        var totalWithCategories = _entries.Count(e => !string.IsNullOrEmpty(e.Category));
+        if (totalWithCategories > 0)
+        {
+            _tagBreakdown = _entries
+                .Where(e => !string.IsNullOrEmpty(e.Category))
+                .GroupBy(e => e.Category)
+                .Select(g => new TagBreakdown 
+                { 
+                    Category = g.Key, 
+                    Count = g.Count(),
+                    Percentage = (g.Count() * 100.0) / totalWithCategories
+                })
+                .OrderByDescending(t => t.Count)
+                .Take(6)
+                .ToList();
+        }
+    }
+
+    private void CalculateWordCountTrends()
+    {
+        if (!_entries.Any()) return;
+
+        // Group by week for trends
+        var entriesByWeek = _entries
+            .GroupBy(e => GetWeekNumber(e.EntryDate))
+            .Select(g => new 
+            { 
+                Week = g.Key,
+                AvgWords = (int)g.Average(e => e.Content?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length ?? 0)
+            })
+            .OrderBy(w => w.Week)
+            .TakeLast(6) // Last 6 weeks
+            .ToList();
+
+        if (entriesByWeek.Count >= 2)
+        {
+            _wordCountTrends = entriesByWeek
+                .Select((w, i) => new WordCountTrend 
+                { 
+                    Period = $"W{i+1}",
+                    WordCount = w.AvgWords 
+                })
+                .ToList();
+
+            _currentAvgWords = entriesByWeek.Last().AvgWords;
+            _wordCountTrend = entriesByWeek.Last().AvgWords - entriesByWeek.First().AvgWords;
+        }
+    }
+
+    private string GetWeekNumber(DateTime date)
+    {
+        var startOfYear = new DateTime(date.Year, 1, 1);
+        var days = (date - startOfYear).Days;
+        return $"Week {((days / 7) + 1)}";
+    }
+
+    private void CalculateStreaks()
+    {
+        if (!_entries.Any()) return;
+
+        // Get all entry dates (unique dates only)
+        var entryDates = _entries
+            .Select(e => e.EntryDate.Date)
+            .Distinct()
+            .OrderByDescending(d => d)
+            .ToList();
+
+        // Current streak - improved 24-hour aware calculation
+        CurrentStreak = CalculateCurrentStreak(entryDates);
+        
+        // Longest streak
+        CalculateLongestStreak(entryDates);
+    }
+
+    private int CalculateCurrentStreak(List<DateTime> entryDates)
+    {
+        if (!entryDates.Any()) return 0;
+        
+        int streak = 0;
+        DateTime expectedDate = DateTime.Today;
+        var todayHasEntry = entryDates.FirstOrDefault(d => d == DateTime.Today) != default;
+        
+        // If today has an entry, start counting from today
+        if (todayHasEntry)
+        {
+            streak = 1;
+            expectedDate = DateTime.Today.AddDays(-1);
+        }
+        else
+        {
+            // If yesterday has an entry, streak continues (24-hour grace period)
+            var yesterdayHasEntry = entryDates.FirstOrDefault(d => d == DateTime.Today.AddDays(-1)) != default;
+            if (yesterdayHasEntry)
+            {
+                streak = 1;
+                expectedDate = DateTime.Today.AddDays(-2);
+            }
+            else
+            {
+                return 0; // No recent entry
+            }
+        }
+        
+        // Count consecutive days backwards
+        foreach (var date in entryDates.Where(d => d < expectedDate.AddDays(1)).OrderByDescending(d => d))
+        {
+            if (date == expectedDate)
+            {
+                streak++;
+                expectedDate = expectedDate.AddDays(-1);
+            }
+            else if (date < expectedDate)
+            {
+                break; // Gap in streak
+            }
+        }
+        
+        return streak;
+    }
+
+    private void CalculateLongestStreak(List<DateTime> entryDates)
+    {
+        if (!entryDates.Any()) 
+        {
+            LongestStreak = 0;
+            return;
+        }
+
+        var orderedDates = entryDates.OrderBy(d => d).ToList();
+        int longest = 0;
+        int current = 1;
+
+        for (int i = 1; i < orderedDates.Count; i++)
+        {
+            var daysDiff = (orderedDates[i] - orderedDates[i - 1]).Days;
+            
+            // Consider 2 days as continuous (24-hour grace)
+            if (daysDiff == 1 || daysDiff == 2)
+            {
+                current++;
+            }
+            else
+            {
+                longest = Math.Max(longest, current);
+                current = 1;
+            }
+        }
+
+        LongestStreak = Math.Max(longest, current);
+    }
+
+    private void CalculateMissedDays()
+    {
+        if (!_entries.Any()) 
+        {
+            MissedDays = 0;
+            return;
+        }
+
+        var entryDates = _entries
+            .Select(e => e.EntryDate.Date)
+            .Distinct()
+            .ToHashSet();
+
+        var firstEntry = _entries.Min(e => e.EntryDate.Date);
+        var today = DateTime.Today;
+        
+        MissedDays = 0;
+        
+        for (var date = firstEntry; date <= today; date = date.AddDays(1))
+        {
+            if (!entryDates.Contains(date))
+            {
+                MissedDays++;
+            }
+        }
+    }
+
+    private void CalculateRecentMissedDays()
+    {
+        if (!_entries.Any()) return;
+
+        var entryDates = _entries
+            .Select(e => e.EntryDate.Date)
+            .Distinct()
+            .ToHashSet();
+
+        var recentStart = DateTime.Today.AddDays(-30); // Last 30 days
+        
+        _recentMissedDays.Clear();
+        
+        for (var date = recentStart; date <= DateTime.Today; date = date.AddDays(1))
+        {
+            if (!entryDates.Contains(date))
+            {
+                _recentMissedDays.Add(date);
+            }
+        }
+        
+        // Take only last 5 missed days
+        _recentMissedDays = _recentMissedDays
+            .OrderByDescending(d => d)
+            .Take(5)
+            .ToList();
+    }
+
+    private string GetDaysAgo(DateTime date)
+    {
+        var days = (DateTime.Today - date).Days;
+        return days == 0 ? "Today" : days == 1 ? "Yesterday" : $"{days}";
+    }
+
+    private string GetArcPath(double centerX, double centerY, double radius, double startAngle, double endAngle)
+    {
+        startAngle = (startAngle - 90) * Math.PI / 180;
+        endAngle = (endAngle - 90) * Math.PI / 180;
+        
+        var startX = centerX + radius * Math.Cos(startAngle);
+        var startY = centerY + radius * Math.Sin(startAngle);
+        var endX = centerX + radius * Math.Cos(endAngle);
+        var endY = centerY + radius * Math.Sin(endAngle);
+        
+        var largeArcFlag = (endAngle - startAngle) <= Math.PI ? "0" : "1";
+        
+        return $"M {centerX} {centerY} L {startX} {startY} A {radius} {radius} 0 {largeArcFlag} 1 {endX} {endY} Z";
+    }
+
+    private string GetTagColor(string tag)
+    {
+        var hash = tag.GetHashCode();
+        var colors = new[]
+        {
+            "#0ea5e9", "#8b5cf6", "#10b981", "#f59e0b", 
+            "#ef4444", "#ec4899", "#14b8a6", "#f97316"
+        };
+        return colors[Math.Abs(hash) % colors.Length];
+    }
+}
+
+<style>
+    .dashboard-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        min-height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    }
+    .overview-header {
+        margin-bottom: 30px;
+    }
+
+    .overview-header h1 {
+        font-size: 1.8rem;
+        color: #1e293b;
+        margin: 0 0 6px 0;
+        font-weight: 700;
+    }
+
+    .overview-header p {
+        color: #64748b;
+        margin: 0;
+        font-size: 1rem;
+    }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 30px;
+    }
+
+    .stat-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .stat-card.streak {
+        background: linear-gradient(135deg, #ff6a00 0%, #ff3d00 100%);
+        color: white;
+        border: none;
+    }
+
+    .stat-card .icon {
+        font-size: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 48px;
+        height: 48px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+    }
+
+    .stat-card:not(.streak) .icon {
+        background: #f8fafc;
+        color: #64748b;
+    }
+
+    .stat-content {
+        flex: 1;
+    }
+
+    .stat-card .label {
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #64748b;
+        text-transform: uppercase;
+        font-weight: 600;
+        margin-bottom: 4px;
+        display: block;
+    }
+
+    .stat-card.streak .label {
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .stat-card h2 {
+        font-size: 1.8rem;
+        color: #1e293b;
+        margin: 0;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .stat-card h2 small {
+        font-size: 0.9rem;
+        font-weight: 500;
+        margin-left: 3px;
+        color: #475569;
+    }
+
+    .stat-card.streak h2,
+    .stat-card.streak h2 small {
+        color: white;
+    }
+    
+    .dashboard-content {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .mood-section,
+    .tags-section,
+    .trends-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    
+    .chart-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #e2e8f0;
+        height: 100%;
+        min-height: 320px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .card-header {
+        margin-bottom: 16px;
+    }
+
+    .card-header h3 {
+        font-size: 1.1rem;
+        color: #1e293b;
+        margin: 0 0 4px 0;
+        font-weight: 700;
+    }
+
+    .card-subtitle {
+        font-size: 0.8rem;
+        color: #64748b;
+        background: #f8fafc;
+        padding: 3px 10px;
+        border-radius: 12px;
+        display: inline-block;
+        border: 1px solid #e2e8f0;
+    }
+
+    .chart-wrapper {
+        flex: 1;
+        position: relative;
+        min-height: 200px;
+    }
+
+    /* Mood Chart */
+    .mood-chart-container {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        height: 100%;
+    }
+
+    .mood-chart {
+        position: relative;
+        width: 160px;
+        height: 160px;
+    }
+
+    .chart-center {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        z-index: 2;
+    }
+
+    .center-value {
+        font-size: 1.4rem;
+        color: #1e293b;
+        font-weight: 700;
+        line-height: 1;
+        margin-bottom: 2px;
+    }
+
+    .center-label {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+    }
+
+    .mood-legend {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex-shrink: 0;
+    }
+
+    .legend-label {
+        flex: 1;
+        font-size: 0.85rem;
+        color: #1e293b;
+        font-weight: 500;
+    }
+
+    .legend-value {
+        font-size: 0.85rem;
+        color: #64748b;
+        font-weight: 600;
+        min-width: 40px;
+        text-align: right;
+    }
+    .mood-details {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .mood-summary {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px;
+        background: #f8fafc;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .mood-icon-large {
+        font-size: 2rem;
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+        border-radius: 12px;
+        flex-shrink: 0;
+    }
+
+    .summary-info {
+        flex: 1;
+    }
+
+    .summary-label {
+        font-size: 0.75rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+        font-weight: 600;
+    }
+
+    .summary-value {
+        font-size: 1.2rem;
+        color: #1e293b;
+        font-weight: 700;
+        line-height: 1;
+        margin-bottom: 4px;
+    }
+
+    .summary-sub {
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }
+
+    .mood-breakdown {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .breakdown-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .breakdown-item.positive {
+        border-left: 3px solid #10b981;
+    }
+
+    .breakdown-item.neutral {
+        border-left: 3px solid #f59e0b;
+    }
+
+    .breakdown-item.negative {
+        border-left: 3px solid #ef4444;
+    }
+
+    .breakdown-icon {
+        font-size: 1.2rem;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+        border-radius: 8px;
+        flex-shrink: 0;
+    }
+
+    .breakdown-info {
+        flex: 1;
+    }
+
+    .breakdown-label {
+        font-size: 0.8rem;
+        color: #64748b;
+        font-weight: 600;
+        margin-bottom: 2px;
+    }
+
+    .breakdown-value {
+        font-size: 1rem;
+        color: #1e293b;
+        font-weight: 700;
+        line-height: 1;
+        margin-bottom: 2px;
+    }
+
+    .breakdown-percent {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+    
+    .tags-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .tag-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .tag-badge {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .tag-name {
+        flex: 1;
+        font-size: 0.9rem;
+        color: #1e293b;
+        font-weight: 500;
+    }
+
+    .tag-count {
+        font-size: 0.85rem;
+        color: #64748b;
+        font-weight: 600;
+        background: #ffffff;
+        padding: 2px 8px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+    }
+    
+    .bar-chart-container {
+        height: 100%;
+    }
+
+    .bar-chart {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        height: 100%;
+    }
+
+    .bar-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .bar-label {
+        width: 70px;
+        font-size: 0.8rem;
+        color: #64748b;
+        font-weight: 500;
+        text-align: right;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .bar-track {
+        flex: 1;
+        height: 20px;
+        background: #f1f5f9;
+        border-radius: 10px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .bar-fill {
+        height: 100%;
+        border-radius: 10px;
+        transition: width 0.5s ease;
+        min-width: 20px;
+        position: relative;
+    }
+
+    .bar-percent {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 0.7rem;
+        color: #ffffff;
+        font-weight: 600;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    
+    .trend-chart {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .trend-stats {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+    }
+
+    .trend-stat {
+        flex: 1;
+        text-align: center;
+        padding: 12px;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .trend-label {
+        font-size: 0.75rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+    }
+
+    .trend-value {
+        font-size: 1.2rem;
+        color: #1e293b;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .trend-value.positive {
+        color: #10b981;
+    }
+
+    .trend-value.negative {
+        color: #ef4444;
+    }
+
+    .trend-value small {
+        font-size: 0.8rem;
+        color: #64748b;
+        font-weight: 500;
+        margin-left: 3px;
+    }
+
+    .trend-graph {
+        flex: 1;
+        padding: 10px;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .trend-graph svg {
+        width: 100%;
+        height: 40px;
+    }
+
+    .graph-labels {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-size: 0.7rem;
+        color: #94a3b8;
+    }
+    
+    .missed-days {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        height: 100%;
+    }
+
+    .missed-day {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .missed-date {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 50px;
+    }
+
+    .date-day {
+        font-size: 1.2rem;
+        color: #1e293b;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .date-month {
+        font-size: 0.7rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .missed-info {
+        flex: 1;
+    }
+
+    .missed-weekday {
+        display: block;
+        font-size: 0.85rem;
+        color: #1e293b;
+        font-weight: 600;
+        margin-bottom: 2px;
+    }
+
+    .missed-ago {
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+
+    .more-days {
+        text-align: center;
+        padding: 10px;
+        color: #64748b;
+        font-size: 0.85rem;
+        font-weight: 500;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px dashed #cbd5e1;
+        margin-top: 4px;
+    }
+    
+    .chart-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #64748b;
+        gap: 12px;
+    }
+
+    .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #0ea5e9;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    .chart-empty {
+        text-align: center;
+        padding: 30px 20px;
+        color: #94a3b8;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .chart-empty span {
+        font-size: 1.8rem;
+        display: block;
+        margin-bottom: 12px;
+        opacity: 0.5;
+    }
+
+    .chart-empty p {
+        margin: 12px 0 6px 0;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #64748b;
+    }
+
+    .chart-empty small {
+        font-size: 0.8rem;
+        opacity: 0.8;
+        line-height: 1.5;
+    }
+
+    /* Dark Theme */
+    .dark .dashboard-container {
+        background: #0f172a;
+        color: #e5e7eb;
+    }
+    
+    .dark .overview-header h1 {
+        color: #f8fafc;
+    }
+    
+    .dark .overview-header p {
+        color: #94a3b8;
+    }
+    
+    .dark .stat-card:not(.streak) {
+        background: #1e293b;
+        border-color: #475569;
+    }
+    
+    .dark .stat-card:not(.streak) .icon {
+        background: #334155;
+        color: #cbd5e1;
+    }
+    
+    .dark .stat-card:not(.streak) .label {
+        color: #94a3b8;
+    }
+    
+    .dark .stat-card:not(.streak) h2 {
+        color: #f8fafc;
+    }
+    
+    .dark .stat-card:not(.streak) h2 small {
+        color: #cbd5e1;
+    }
+    
+    .dark .chart-card {
+        background: #1e293b;
+        border-color: #475569;
+    }
+    
+    .dark .card-header h3 {
+        color: #f8fafc;
+    }
+    
+    .dark .card-subtitle {
+        color: #94a3b8;
+        background: #334155;
+        border-color: #475569;
+    }
+    
+    .dark .center-value {
+        color: #f8fafc;
+    }
+    
+    .dark .legend-item,
+    .dark .mood-summary,
+    .dark .breakdown-item,
+    .dark .tag-item,
+    .dark .trend-stat,
+    .dark .trend-graph,
+    .dark .missed-day {
+        background: #334155;
+        border-color: #475569;
+    }
+    
+    .dark .legend-label,
+    .dark .summary-value,
+    .dark .breakdown-value,
+    .dark .tag-name,
+    .dark .trend-value:not(.positive):not(.negative),
+    .dark .date-day,
+    .dark .missed-weekday {
+        color: #f8fafc;
+    }
+    
+    .dark .legend-value,
+    .dark .summary-label,
+    .dark .summary-sub,
+    .dark .breakdown-label,
+    .dark .breakdown-percent,
+    .dark .tag-count,
+    .dark .trend-label,
+    .dark .trend-value small,
+    .dark .graph-labels,
+    .dark .date-month,
+    .dark .missed-ago,
+    .dark .more-days {
+        color: #94a3b8;
+    }
+    
+    .dark .bar-track {
+        background: #334155;
+    }
+    
+    .dark .chart-loading {
+        color: #94a3b8;
+    }
+    
+    .dark .spinner {
+        border-color: #334155;
+        border-top-color: #38bdf8;
+    }
+    
+    .dark .chart-empty p {
+        color: #cbd5e1;
+    }
+</style>

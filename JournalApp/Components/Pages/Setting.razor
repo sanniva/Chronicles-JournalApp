@@ -1,0 +1,1209 @@
+@page "/settings"
+@using JournalApp.Components.Models
+@using JournalApp.Components.Services
+@using System.Text.Json
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@inject UserStateService UserState
+@inject AuthDatabase AuthService
+@inject DatabaseService DataService
+
+<PageTitle>Settings</PageTitle>
+
+<div class="settings-page">
+    <h1>Settings</h1>
+    <p class="subtitle">Manage your account preferences</p>
+
+    <!-- Account Info Card -->
+    <div class="account-card">
+        <div class="account-header">
+            <div class="account-icon">
+                <i class="fas fa-user-circle"></i>
+            </div>
+            <div>
+                <h3>@UserState.CurrentUser.Username</h3>
+                <p>Chronicles Journal User</p>
+            </div>
+        </div>
+
+        <div class="account-section">
+            <div>
+                <h4>Change PIN</h4>
+                <p>Update your access code</p>
+            </div>
+            <button class="change-pin-btn" @onclick="ShowChangePassword">Change PIN</button>
+        </div>
+
+        <div class="account-section logout-section">
+            <div>
+                <h4>Log Out</h4>
+                <p>Sign out of your account</p>
+            </div>
+            <button class="logout-btn" @onclick="Logout">Logout</button>
+        </div>
+    </div>
+
+    <!-- Theme Card -->
+    <div class="theme-card">
+        <div class="card-top">
+            <div class="theme-icon">
+                @if (_isDark)
+                {
+                    <i class="fas fa-moon"></i>
+                }
+                else
+                {
+                    <i class="fas fa-sun"></i>
+                }
+            </div>
+            <div>
+                <h3>Appearance</h3>
+                <p>Switch between light and dark mode</p>
+            </div>
+        </div>
+        <button @onclick="ToggleTheme" class="theme-btn">
+            Switch to @(_isDark ? "Light" : "Dark")
+        </button>
+    </div>
+
+    <!-- Export Card -->
+    <div class="export-card">
+        <div class="card-top">
+            <div class="export-icon">
+                <i class="fas fa-file-pdf"></i>
+            </div>
+            <div>
+                <h3>Export Journal</h3>
+                <p>Download your entries as PDF</p>
+            </div>
+        </div>
+        
+        <!-- Export Options -->
+        <div class="export-options">
+            <div class="export-type">
+                <label>
+                    <input type="radio" name="exportType" value="all" 
+                           checked="@(_exportType == "all")"
+                           @onchange="@(() => _exportType = "all")" />
+                    <span>Export All Entries</span>
+                </label>
+                <label>
+                    <input type="radio" name="exportType" value="range" 
+                           checked="@(_exportType == "range")"
+                           @onchange="@(() => _exportType = "range")" />
+                    <span>Export by Date Range</span>
+                </label>
+            </div>
+
+            @if (_exportType == "range")
+            {
+                <div class="date-range-inputs">
+                    <div class="form-group">
+                        <label>From Date</label>
+                        <input type="date" @bind="_startDate" class="date-input" />
+                    </div>
+                    <div class="form-group">
+                        <label>To Date</label>
+                        <input type="date" @bind="_endDate" class="date-input" />
+                    </div>
+                </div>
+                
+                @if (!string.IsNullOrEmpty(_rangeErrorMessage))
+                {
+                    <div class="error-message">@_rangeErrorMessage</div>
+                }
+            }
+
+            <button class="export-btn" @onclick="ExportToPDF">
+                <i class="fas fa-download"></i> Export PDF
+            </button>
+            
+            @if (_showExportInfo && _exportedEntryCount > 0)
+            {
+                <div class="export-info success">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Exported @_exportedEntryCount journal@((_exportedEntryCount == 1) ? "" : "s")</span>
+                </div>
+            }
+            else if (_showExportInfo)
+            {
+                <div class="export-info warning">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span>No entries found in selected range</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Change PIN Modal (actually changes password) -->
+    @if (_showPasswordModal)
+    {
+        <div class="modal-overlay">
+            <div class="modal-content">
+                <h3>Change PIN</h3>
+                <div class="modal-form">
+                    <div class="form-group">
+                        <label>Current PIN</label>
+                        <input type="password"
+                               @bind="_currentPassword"
+                               placeholder="Enter current PIN"
+                               class="password-input"/>
+                    </div>
+                    <div class="form-group">
+                        <label>New PIN</label>
+                        <input type="password"
+                               @bind="_newPassword"
+                               placeholder="Enter new PIN"
+                               class="password-input"/>
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm New PIN</label>
+                        <input type="password"
+                               @bind="_confirmPassword"
+                               placeholder="Confirm new PIN"
+                               class="password-input"/>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_passwordErrorMessage))
+                    {
+                        <div class="error-message">@_passwordErrorMessage</div>
+                    }
+
+                    <div class="modal-actions">
+                        <button @onclick="ClosePasswordModal" class="cancel-btn">Cancel</button>
+                        <button @onclick="ChangePassword" class="save-btn">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isDark = false;
+    private bool _showPasswordModal = false;
+    private string _currentPassword = "";
+    private string _newPassword = "";
+    private string _confirmPassword = "";
+    private string _passwordErrorMessage = "";
+    
+    // Export variables
+    private string _exportType = "all";
+    private DateTime _startDate = DateTime.Today.AddDays(-30);
+    private DateTime _endDate = DateTime.Today;
+    private string _rangeErrorMessage = "";
+    private bool _showExportInfo = false;
+    private int _exportedEntryCount = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserState.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/auth", true);
+            return;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _isDark = await JSRuntime.InvokeAsync<string>("themeHelper.getTheme") == "dark";
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        _isDark = !_isDark;
+        await JSRuntime.InvokeVoidAsync("themeHelper.setDark", _isDark);
+        StateHasChanged();
+    }
+
+    private async Task Logout()
+    {
+        UserState.Logout();
+        Navigation.NavigateTo("/auth", true);
+    }
+
+    private void ShowChangePassword()
+    {
+        _showPasswordModal = true;
+        _currentPassword = "";
+        _newPassword = "";
+        _confirmPassword = "";
+        _passwordErrorMessage = "";
+        StateHasChanged();
+    }
+
+    private void ClosePasswordModal()
+    {
+        _showPasswordModal = false;
+        StateHasChanged();
+    }
+
+    private async Task ChangePassword()
+    {
+        // Validate PINs
+        if (string.IsNullOrEmpty(_currentPassword) || string.IsNullOrEmpty(_newPassword) || string.IsNullOrEmpty(_confirmPassword))
+        {
+            _passwordErrorMessage = "All fields are required";
+            StateHasChanged();
+            return;
+        }
+
+        if (_newPassword.Length < 4)
+        {
+            _passwordErrorMessage = "New PIN must be at least 4 characters";
+            StateHasChanged();
+            return;
+        }
+
+        if (_newPassword != _confirmPassword)
+        {
+            _passwordErrorMessage = "New PINs don't match";
+            StateHasChanged();
+            return;
+        }
+
+        // Change password
+        var success = await UserState.ChangePassword(_currentPassword, _newPassword);
+        if (success)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "PIN changed successfully!");
+            ClosePasswordModal();
+        }
+        else
+        {
+            _passwordErrorMessage = "Current PIN is incorrect";
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportToPDF()
+    {
+        if (UserState.CurrentUser == null) return;
+
+        try
+        {
+            List<JournalEntry> entries;
+            string exportDescription;
+
+            if (_exportType == "range")
+            {
+                if (_startDate > _endDate)
+                {
+                    _rangeErrorMessage = "Start date cannot be after end date";
+                    StateHasChanged();
+                    return;
+                }
+
+                entries = await DataService.GetEntriesByDateRange(_startDate, _endDate, UserState.CurrentUser.UserId);
+                exportDescription = $"From {_startDate:yyyy-MM-dd} to {_endDate:yyyy-MM-dd}";
+            }
+            else
+            {
+                entries = await DataService.GetEntriesByUserId(UserState.CurrentUser.UserId);
+                exportDescription = "All Entries";
+            }
+
+            if (entries.Count == 0)
+            {
+                _showExportInfo = true;
+                _exportedEntryCount = 0;
+                StateHasChanged();
+                return;
+            }
+
+            _exportedEntryCount = entries.Count;
+            _showExportInfo = true;
+
+            var entriesData = entries
+                .OrderByDescending(e => e.EntryDate)
+                .Select(e => new
+                {
+                    Date = e.EntryDate.ToString("yyyy-MM-dd"),
+                    Title = e.Title ?? "Untitled",
+                    Mood = e.PrimaryMood ?? "Not specified",
+                    Category = e.Category ?? "Uncategorized",
+                    Content = PreserveOriginalFormatting(e.Content)
+                })
+                .ToList();
+
+            var entriesJson = JsonSerializer.Serialize(entriesData);
+
+            await JSRuntime.InvokeVoidAsync("generatePDF",
+                UserState.CurrentUser.Username,
+                DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                entries.Count,
+                exportDescription,
+                entriesJson);
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error exporting to PDF: {ex.Message}");
+        }
+    }
+
+    private string PreserveOriginalFormatting(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return "";
+
+        try
+        {
+            var cleaned = System.Text.RegularExpressions.Regex.Replace(content, "<.*?>", string.Empty);
+            cleaned = System.Net.WebUtility.HtmlDecode(cleaned);
+            
+            cleaned = cleaned
+                .Replace("&nbsp;", " ")
+                .Replace("&amp;", "&")
+                .Replace("&lt;", "<")
+                .Replace("&gt;", ">")
+                .Replace("&quot;", "\"")
+                .Replace("&#39;", "'")
+                .Replace("&#34;", "\"");
+            
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, "<br\\s*/?>", "\n", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, "</p>", "\n\n", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, "<p[^>]*>", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, "</div>", "\n", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, "<div[^>]*>", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            
+            // FIX: Add spaces between words that run together (like "DayTook" -> "Day Took")
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, 
+                @"([a-z])([A-Z])", 
+                "$1 $2");
+            
+            // Handle markdown headers with ** for bold
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"^\s*\*\*(.*?)\*\*\s*$", "[HEADING]$1[/HEADING]", 
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+            
+            // Handle inline bold text **text**
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\*\*(.*?)\*\*", "[BOLD]$1[/BOLD]");
+            
+            // Handle italic text *text* or _text_
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\*(.*?)\*", "[ITALIC]$1[/ITALIC]");
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"_(.*?)_", "[ITALIC]$1[/ITALIC]");
+            
+            cleaned = cleaned.Trim();
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\n{3,}", "\n\n");
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"[ ]{2,}", " ");
+            
+            return cleaned;
+        }
+        catch
+        {
+            return System.Text.RegularExpressions.Regex.Replace(content, "<.*?>", string.Empty);
+        }
+    }
+}
+
+<style>
+    .settings-page {
+        padding: 20px;
+        max-width: 800px;
+        margin: 0 auto;
+        min-height: 100vh;
+    }
+
+    body.dark {
+        background: #121212;
+        color: white;
+        min-height: 100vh;
+    }
+
+    h1 {
+        font-size: 32px;
+        font-weight: bold;
+        margin-bottom: 8px;
+        color: #333;
+    }
+
+    .dark h1 {
+        color: white;
+    }
+
+    .subtitle {
+        color: #666;
+        margin-bottom: 30px;
+        font-size: 16px;
+    }
+
+    .dark .subtitle {
+        color: #aaa;
+    }
+
+    /* Account Card */
+    .account-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .dark .account-card {
+        background: #1e293b;
+        border-color: #333;
+    }
+
+    .account-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .account-icon {
+        width: 56px;
+        height: 56px;
+        background: #e3f2fd;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: #2196f3;
+    }
+
+    .dark .account-icon {
+        background: #2c5282;
+        color: #90caf9;
+    }
+
+    .account-header h3 {
+        margin: 0;
+        font-size: 20px;
+        color: #333;
+    }
+
+    .dark .account-header h3 {
+        color: white;
+    }
+
+    .account-header p {
+        margin: 4px 0 0 0;
+        color: #666;
+        font-size: 14px;
+    }
+
+    .dark .account-header p {
+        color: #aaa;
+    }
+
+    .account-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 0;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .dark .account-section {
+        border-color: #333;
+    }
+
+    .logout-section {
+        border-top: 1px solid #e0e0e0;
+        padding-top: 20px;
+    }
+
+    .dark .logout-section {
+        border-color: #444;
+    }
+
+    .account-section h4 {
+        margin: 0 0 4px 0;
+        font-size: 16px;
+        color: #333;
+    }
+
+    .dark .account-section h4 {
+        color: white;
+    }
+
+    .account-section p {
+        margin: 0;
+        color: #666;
+        font-size: 14px;
+    }
+
+    .dark .account-section p {
+        color: #aaa;
+    }
+
+    .change-pin-btn {
+        padding: 10px 20px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .change-pin-btn:hover {
+        background: #5a6fd8;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .logout-btn {
+        padding: 10px 20px;
+        background: #ff6b6b;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .logout-btn:hover {
+        background: #ff5252;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+    }
+
+    /* Theme Card */
+    .theme-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .dark .theme-card {
+        background: #1e293b;
+        border-color: #333;
+    }
+
+    .card-top {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .theme-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+    }
+
+    .theme-icon {
+        background: #fff3cd;
+        color: #ff9800;
+    }
+
+    .dark .theme-icon {
+        background: #5d4037;
+        color: #ffb74d;
+    }
+
+    .card-top h3 {
+        margin: 0 0 4px 0;
+        font-size: 18px;
+        color: #333;
+    }
+
+    .dark .card-top h3 {
+        color: white;
+    }
+
+    .card-top p {
+        margin: 0;
+        color: #666;
+        font-size: 14px;
+    }
+
+    .dark .card-top p {
+        color: #aaa;
+    }
+
+    .theme-btn {
+        width: 100%;
+        padding: 14px;
+        background: #f8f9fa;
+        color: #333;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .theme-btn:hover {
+        background: #e9ecef;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .dark .theme-btn {
+        background: #333;
+        color: white;
+    }
+
+    .dark .theme-btn:hover {
+        background: #444;
+    }
+
+    /* Export Card */
+    .export-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .dark .export-card {
+        background: #1e293b;
+        border-color: #333;
+    }
+
+    .export-icon {
+        width: 56px;
+        height: 56px;
+        background: #f8d7da;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: #f44336;
+    }
+
+    .dark .export-icon {
+        background: #4a148c;
+        color: #e1bee7;
+    }
+
+    .export-card h3 {
+        margin: 0 0 4px 0;
+        font-size: 18px;
+        color: #333;
+    }
+
+    .dark .export-card h3 {
+        color: white;
+    }
+
+    .export-card p {
+        margin: 0;
+        color: #666;
+        font-size: 14px;
+    }
+
+    .dark .export-card p {
+        color: #aaa;
+    }
+
+    /* New Export Options Styles */
+    .export-options {
+        margin-top: 20px;
+    }
+
+    .export-type {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .export-type label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        padding: 10px;
+        border-radius: 8px;
+        transition: background 0.2s;
+    }
+
+    .export-type label:hover {
+        background: #f8f9fa;
+    }
+
+    .dark .export-type label:hover {
+        background: #2d3748;
+    }
+
+    .export-type input[type="radio"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .export-type span {
+        font-size: 16px;
+        color: #333;
+    }
+
+    .dark .export-type span {
+        color: white;
+    }
+
+    .date-range-inputs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .form-group label {
+        font-weight: 600;
+        color: #333;
+        font-size: 14px;
+    }
+
+    .dark .form-group label {
+        color: #e0e0e0;
+    }
+
+    .date-input {
+        width: 90%;
+        padding: 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        font-size: 16px;
+        font-family: inherit;
+    }
+
+    .dark .date-input {
+        background: #2d2d2d;
+        border-color: #555;
+        color: white;
+    }
+
+    .date-input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .export-btn {
+        width: 100%;
+        padding: 14px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .export-btn:hover {
+        background: #c82333;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+    }
+
+    .export-info {
+        margin-top: 15px;
+        padding: 12px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .export-info.success {
+        background: #d1e7dd;
+        color: #0f5132;
+        border: 1px solid #badbcc;
+    }
+
+    .dark .export-info.success {
+        background: #0f2a1e;
+        color: #75b798;
+        border-color: #1c5238;
+    }
+
+    .export-info.warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeaa7;
+    }
+
+    .dark .export-info.warning {
+        background: #332c1e;
+        color: #ffd351;
+        border-color: #5a4f2c;
+    }
+
+    .export-info i {
+        font-size: 16px;
+    }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        width: 90%;
+        max-width: 400px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .dark .modal-content {
+        background: #1e293b;
+        color: white;
+    }
+
+    .modal-content h3 {
+        margin: 0 0 20px 0;
+        color: #333;
+        font-size: 20px;
+    }
+
+    .dark .modal-content h3 {
+        color: white;
+    }
+
+    .modal-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .form-group label {
+        font-weight: 600;
+        color: #333;
+        font-size: 14px;
+    }
+
+    .dark .form-group label {
+        color: #e0e0e0;
+    }
+
+    .password-input {
+        width: 90%;
+        padding: 12px;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        font-size: 16px;
+    }
+
+    .dark .password-input {
+        background: #2d2d2d;
+        border-color: #555;
+        color: white;
+    }
+
+    .password-input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .error-message {
+        background: #fee2e2;
+        color: #dc2626;
+        padding: 12px;
+        border-radius: 12px;
+        text-align: center;
+        font-size: 14px;
+        margin: 15px 0;
+        font-weight: 500;
+    }
+
+    .dark .error-message {
+        background: #4a1c1c;
+        color: #ff6b6b;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+    }
+
+    .cancel-btn {
+        flex: 1;
+        padding: 12px;
+        background: #f8f9fa;
+        color: #333;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .dark .cancel-btn {
+        background: #333;
+        color: white;
+    }
+
+    .save-btn {
+        flex: 1;
+        padding: 12px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .save-btn:hover {
+        background: #5a6fd8;
+    }
+</style>
+
+<script>
+    // JavaScript function for PDF generation with formatting support
+    async function generatePDF(username, exportDate, totalEntries, exportDescription, entriesJson) {
+        try {
+            // Import jsPDF dynamically
+            const jsPDF = window.jspdf.jsPDF;
+
+            // Parse entries data
+            const entries = JSON.parse(entriesJson);
+
+            // Create PDF document
+            const doc = new jsPDF();
+
+            // Set default font
+            doc.setFont("helvetica");
+
+            // Add title
+            doc.setFontSize(24);
+            doc.setTextColor(40, 40, 40);
+            doc.text("Chronicles Journal Export", 105, 20, null, null, 'center');
+
+            // Add subtitle with export description
+            doc.setFontSize(12);
+            doc.setTextColor(100, 100, 100);
+            doc.text(`User: ${username} | Export Date: ${exportDate}`, 105, 30, null, null, 'center');
+            doc.text(`Export Range: ${exportDescription}`, 105, 36, null, null, 'center');
+            
+            // Add total entries info
+            doc.text(`Total Entries: ${totalEntries}`, 105, 42, null, null, 'center');
+
+            // Add header line
+            doc.setDrawColor(200, 200, 200);
+            doc.line(20, 48, 190, 48);
+
+            let yPosition = 58;
+            const lineHeight = 6;
+            const pageHeight = 280;
+            const leftMargin = 20;
+            const contentWidth = 170;
+
+            // Add each entry
+            doc.setFontSize(12);
+            doc.setTextColor(60, 60, 60);
+
+            for (let i = 0; i < entries.length; i++) {
+                const entry = entries[i];
+
+                // Check if we need a new page
+                if (yPosition > pageHeight - 30) {
+                    doc.addPage();
+                    yPosition = 20;
+                }
+
+                // Entry header with date
+                doc.setFontSize(14);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(30, 30, 30);
+                const entryHeader = `Entry ${i + 1}: ${entry.Date}`;
+                doc.text(entryHeader, leftMargin, yPosition);
+                yPosition += lineHeight + 2;
+
+                // Entry metadata
+                doc.setFontSize(11);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(80, 80, 80);
+
+                // Title
+                if (entry.Title && entry.Title !== "Untitled") {
+                    doc.text(`Title: ${entry.Title}`, leftMargin, yPosition);
+                    yPosition += lineHeight;
+                }
+
+                // Mood
+                if (entry.Mood && entry.Mood !== "Not specified") {
+                    doc.text(`Mood: ${entry.Mood}`, leftMargin, yPosition);
+                    yPosition += lineHeight;
+                }
+
+                // Category
+                if (entry.Category && entry.Category !== "Uncategorized") {
+                    doc.text(`Category: ${entry.Category}`, leftMargin, yPosition);
+                    yPosition += lineHeight;
+                }
+
+                // Add separator before content
+                yPosition += 4;
+                doc.setDrawColor(230, 230, 230);
+                doc.line(leftMargin, yPosition - 2, leftMargin + contentWidth, yPosition - 2);
+                yPosition += 6;
+
+                // Content - Preserve original formatting with line breaks
+                doc.setFontSize(11);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(40, 40, 40);
+
+                if (entry.Content && entry.Content.trim() !== "") {
+                    // Split the content by newlines to preserve line breaks
+                    const contentLines = entry.Content.split('\n');
+                    
+                    for (let j = 0; j < contentLines.length; j++) {
+                        let line = contentLines[j];
+                        let lineToDraw = line;
+                        
+                        // Check for formatting markers
+                        const hasHeading = line.includes('[HEADING]') && line.includes('[/HEADING]');
+                        const hasBold = line.includes('[BOLD]') && line.includes('[/BOLD]');
+                        const hasItalic = line.includes('[ITALIC]') && line.includes('[/ITALIC]');
+                        
+                        // Remove formatting markers for text measurement
+                        lineToDraw = lineToDraw
+                            .replace(/\[HEADING\]/g, '')
+                            .replace(/\[\/HEADING\]/g, '')
+                            .replace(/\[BOLD\]/g, '')
+                            .replace(/\[\/BOLD\]/g, '')
+                            .replace(/\[ITALIC\]/g, '')
+                            .replace(/\[\/ITALIC\]/g, '');
+                        
+                        // Skip empty lines (but preserve paragraph spacing)
+                        if (lineToDraw.trim() === "" && j < contentLines.length - 1) {
+                            yPosition += lineHeight / 2;
+                            continue;
+                        }
+                        
+                        // Check if we need a new page
+                        if (yPosition > pageHeight - 10) {
+                            doc.addPage();
+                            yPosition = 20;
+                        }
+                        
+                        // Apply formatting based on markers
+                        if (hasHeading) {
+                            doc.setFont("helvetica", "bold");
+                            doc.setFontSize(12);
+                        } else if (hasBold) {
+                            doc.setFont("helvetica", "bold");
+                            doc.setFontSize(11);
+                        } else if (hasItalic) {
+                            doc.setFont("helvetica", "italic");
+                            doc.setFontSize(11);
+                        } else {
+                            doc.setFont("helvetica", "normal");
+                            doc.setFontSize(11);
+                        }
+                        
+                        // If line is too long, split it
+                        if (doc.getStringUnitWidth(lineToDraw) * doc.getFontSize() / doc.internal.scaleFactor > contentWidth) {
+                            const splitLines = doc.splitTextToSize(lineToDraw, contentWidth);
+                            for (let k = 0; k < splitLines.length; k++) {
+                                if (yPosition > pageHeight - 10) {
+                                    doc.addPage();
+                                    yPosition = 20;
+                                }
+                                doc.text(splitLines[k], leftMargin, yPosition);
+                                yPosition += lineHeight;
+                            }
+                        } else {
+                            doc.text(lineToDraw, leftMargin, yPosition);
+                            yPosition += lineHeight;
+                        }
+                        
+                        // Reset to normal font for next line
+                        doc.setFont("helvetica", "normal");
+                        doc.setFontSize(11);
+                    }
+                } else {
+                    doc.text("No content", leftMargin, yPosition);
+                    yPosition += lineHeight;
+                }
+
+                // Add space between entries
+                yPosition += 10;
+
+                // Add page separator if not last entry
+                if (i < entries.length - 1) {
+                    if (yPosition > pageHeight - 20) {
+                        doc.addPage();
+                        yPosition = 20;
+                    } else {
+                        doc.setDrawColor(200, 200, 200);
+                        doc.setLineWidth(0.5);
+                        doc.line(leftMargin, yPosition - 5, leftMargin + contentWidth, yPosition - 5);
+                        yPosition += 10;
+                    }
+                }
+            }
+
+            // Add footer
+            doc.setFontSize(10);
+            doc.setTextColor(150, 150, 150);
+            doc.text("Generated by Chronicles Journal App", 105, pageHeight - 5, null, null, 'center');
+
+            // Save the PDF
+            const safeUsername = username.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const fileName = `chronicles_journal_${safeUsername}_${new Date().toISOString().slice(0, 10)}.pdf`;
+            doc.save(fileName);
+
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert('Error generating PDF: ' + error.message);
+        }
+    }
+
+    // Load jsPDF library if not already loaded
+    if (!window.jspdf) {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        script.onload = function () {
+            console.log('jsPDF loaded successfully');
+        };
+        document.head.appendChild(script);
+    }
+</script>
